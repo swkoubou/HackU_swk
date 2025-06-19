@@ -12,7 +12,7 @@ body {
 }
 
 .game-container {
-    max-width: 900px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 20px;
     font-family: 'Arial', sans-serif;
@@ -26,6 +26,99 @@ body {
     justify-content: space-between;
     margin-bottom: 20px;
     font-size: 18px;
+    font-weight: bold;
+}
+
+.game-info .lives {
+    display: flex;
+    align-items: center;
+}
+
+.game-info .lives span {
+    display: flex;
+    align-items: center;
+}
+
+/* ハートSVGのアニメーション */
+.game-info .lives svg {
+    transition: transform 0.3s ease;
+}
+
+.game-info .lives svg:hover {
+    transform: scale(1.2);
+}
+
+.game-main {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.left-panel {
+    background: rgba(0, 100, 255, 0.1);
+    border: 2px solid rgba(0, 100, 255, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    width: 320px;
+    text-align: center;
+}
+
+.left-panel h3 {
+    margin: 0 0 10px 0;
+    color: #00aaff;
+    font-size: 16px;
+}
+
+#heartDataGraph {
+    border: 1px solid #00aaff;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+#currentValue {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+#valueText {
+    color: #00ffff;
+    font-weight: bold;
+}
+
+.center-panel {
+    flex-shrink: 0;
+}
+
+.right-panel {
+    background: rgba(255, 100, 100, 0.1);
+    border: 2px solid rgba(255, 100, 100, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    width: 280px;
+    text-align: center;
+}
+
+.right-panel h3 {
+    margin: 0 0 10px 0;
+    color: #ff6666;
+    font-size: 16px;
+}
+
+#heartCanvas {
+    border: 1px solid #ff6666;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+#beatCounter {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+#beatCount {
+    color: #ff6666;
     font-weight: bold;
 }
 
@@ -195,6 +288,25 @@ button:disabled {
 }
 
 /* レスポンシブデザイン */
+@media (max-width: 1400px) {
+    .game-main {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .left-panel, .right-panel {
+        width: 100%;
+        max-width: 400px;
+        margin-bottom: 20px;
+    }
+    
+    #gameCanvas {
+        width: 100%;
+        max-width: 800px;
+        height: auto;
+    }
+}
+
 @media (max-width: 900px) {
     #gameCanvas {
         width: 100%;
@@ -211,5 +323,21 @@ button:disabled {
     
     #thresholdSlider {
         width: 150px;
+    }
+    
+    .left-panel, .right-panel {
+        width: 100%;
+        padding: 10px;
+    }
+    
+    #heartDataGraph {
+        width: 100%;
+        max-width: 280px;
+    }
+    
+    #heartCanvas {
+        width: 100%;
+        max-width: 200px;
+        height: auto;
     }
 } 

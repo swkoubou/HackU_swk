@@ -54,6 +54,17 @@ class SpaceInvadersGame {
         this.threshold = 2080;
         this.aboveThreshold = false;
         
+        // グラフ描画用
+        this.graphCanvas = null;
+        this.graphCtx = null;
+        
+        // ドックンアニメーション用
+        this.heartCanvas = null;
+        this.heartCtx = null;
+        this.heartImages = [];
+        this.frameCount = 7;
+        this.frameDelay = 50;
+        
         this.init();
     }
     
@@ -62,6 +73,55 @@ class SpaceInvadersGame {
         this.setupEventListeners();
         this.createPlayer();
         this.setupUI();
+        this.setupCanvases();
+    }
+    
+    setupCanvases() {
+        // グラフキャンバスの設定
+        this.graphCanvas = document.getElementById('heartDataGraph');
+        this.graphCtx = this.graphCanvas.getContext('2d');
+        
+        // ドックンキャンバスの設定
+        this.heartCanvas = document.getElementById('heartCanvas');
+        this.heartCtx = this.heartCanvas.getContext('2d');
+        
+        // ハートのSVG画像を読み込み（簡単な円形で代用）
+        this.loadHeartImages();
+    }
+    
+    loadHeartImages() {
+        // SVGファイルの代わりに、動的に生成したハート画像を使用
+        for (let i = 0; i < this.frameCount; i++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            // ハート形状を描画（サイズを段階的に変更）
+            const scale = 0.5 + (i / (this.frameCount - 1)) * 0.5; // 0.5から1.0まで
+            this.drawHeartShape(ctx, 128, 128, 80 * scale, '#ff6666');
+            
+            this.heartImages.push(canvas);
+        }
+    }
+    
+    drawHeartShape(ctx, x, y, size, color) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(size / 80, size / 80);
+        
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        
+        // ハート形状の描画
+        ctx.moveTo(0, 15);
+        ctx.bezierCurveTo(-50, -40, -90, 10, 0, 50);
+        ctx.bezierCurveTo(90, 10, 50, -40, 0, 15);
+        ctx.fill();
+        
+        ctx.restore();
     }
     
     createStars() {
@@ -278,9 +338,19 @@ class SpaceInvadersGame {
     }
     
     startGame() {
+        // Bluetooth接続の確認
+        if (!this.characteristic) {
+            alert('Bluetooth接続が必要です。');
+            return;
+        }
+        
+        // しきい値の確認
+        console.log(`現在のしきい値: ${this.threshold} でゲームを開始します`);
+        
         this.gameState = 'playing';
         document.getElementById('startButton').style.display = 'none';
         document.getElementById('pauseButton').style.display = 'inline-block';
+        // しきい値コントロールはプレイ中も表示したまま
         this.createLevel();
         this.gameLoop();
     }
@@ -673,6 +743,8 @@ class SpaceInvadersGame {
         if (this.characteristic) {
             // 接続済みの場合は通常のリスタート
             document.getElementById('startButton').style.display = 'inline-block';
+            document.getElementById('startButton').textContent = 'しきい値を調整してゲーム開始';
+            document.getElementById('thresholdControl').style.display = 'block'; // しきい値調整を表示
             document.getElementById('pauseButton').style.display = 'none';
             this.gameState = 'menu';
         } else {
@@ -718,7 +790,32 @@ class SpaceInvadersGame {
     }
     
     updateLives() {
-        document.getElementById('lives').textContent = this.lives;
+        const livesElement = document.getElementById('lives');
+        livesElement.innerHTML = '';
+        
+        // 残機数分のハートSVGを作成
+        for (let i = 0; i < this.lives; i++) {
+            const heartSvg = this.createHeartSVG();
+            livesElement.appendChild(heartSvg);
+        }
+    }
+    
+    createHeartSVG() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '20');
+        svg.setAttribute('height', '20');
+        svg.setAttribute('viewBox', '0 0 100 100');
+        svg.style.marginLeft = '5px';
+        svg.style.filter = 'drop-shadow(0 0 3px #ff6666)';
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M50,85 C50,85 20,60 20,40 C20,25 30,15 45,15 C47,15 50,18 50,18 C50,18 53,15 55,15 C70,15 80,25 80,40 C80,60 50,85 50,85 Z');
+        path.setAttribute('fill', '#ff6666');
+        path.setAttribute('stroke', '#cc0000');
+        path.setAttribute('stroke-width', '2');
+        
+        svg.appendChild(path);
+        return svg;
     }
     
     updateLevel() {
@@ -756,14 +853,12 @@ class SpaceInvadersGame {
             startButton.disabled = false;
             startButton.style.opacity = '1';
             startButton.style.cursor = 'pointer';
-            startButton.textContent = 'ゲーム開始';
+            startButton.textContent = 'しきい値を調整してゲーム開始';
             
             // 通信開始を自動実行
             await this.sendStart();
             
-            // 自動でゲームを開始
-            console.log('自動でゲームを開始します');
-            this.startGame();
+            console.log('しきい値を調整してからゲーム開始ボタンを押してください');
             
         } catch (error) {
             console.log('Bluetooth接続エラー: ' + error);
@@ -778,6 +873,10 @@ class SpaceInvadersGame {
             const filtered = this.lowPassFilter(valueNum);
             this.detectBeat(filtered);
             this.addData(Math.round(filtered));
+            
+            // UIの更新
+            this.updateCurrentValue(Math.round(filtered));
+            this.drawGraph();
         }
     }
 
@@ -788,6 +887,13 @@ class SpaceInvadersGame {
                 this.beatCount++;
                 this.lastBeatTime = now;
                 console.log(`ドックン ${this.beatCount} 回 - 弾発射!`);
+                
+                // UI更新
+                this.updateBeatCount();
+                
+                // ドックンアニメーション実行
+                this.playHeartAnimation();
+                
                 // 弾を発射
                 this.shoot();
             }
@@ -806,9 +912,117 @@ class SpaceInvadersGame {
 
     addData(data) {
         this.dataArray.push(data);
-        if (this.dataArray.length > 800) this.dataArray.shift(); // 最大800点まで
+        if (this.dataArray.length > 300) this.dataArray.shift(); // グラフ幅に合わせて調整
     }
-
+    
+    updateCurrentValue(value) {
+        document.getElementById('valueText').textContent = value;
+    }
+    
+    updateBeatCount() {
+        document.getElementById('beatCount').textContent = this.beatCount;
+    }
+    
+    drawGraph() {
+        if (!this.graphCtx || this.dataArray.length === 0) return;
+        
+        const canvas = this.graphCanvas;
+        const ctx = this.graphCtx;
+        
+        // キャンバスをクリア
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // グリッド描画
+        this.drawGrid(ctx, canvas);
+        
+        // しきい値ライン描画
+        this.drawThresholdLine(ctx, canvas);
+        
+        // データ線描画
+        this.drawDataLine(ctx, canvas);
+    }
+    
+    drawGrid(ctx, canvas) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        
+        // 縦線
+        for (let x = 0; x <= canvas.width; x += 30) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        
+        // 横線
+        for (let y = 0; y <= canvas.height; y += 20) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    }
+    
+    drawThresholdLine(ctx, canvas) {
+        if (this.dataArray.length === 0) return;
+        
+        const minValue = Math.min(...this.dataArray);
+        const maxValue = Math.max(...this.dataArray);
+        const range = maxValue - minValue || 1000;
+        
+        const thresholdY = canvas.height - ((this.threshold - minValue) / range) * canvas.height;
+        
+        ctx.strokeStyle = '#ff6666';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        
+        ctx.beginPath();
+        ctx.moveTo(0, thresholdY);
+        ctx.lineTo(canvas.width, thresholdY);
+        ctx.stroke();
+        
+        ctx.setLineDash([]);
+    }
+    
+    drawDataLine(ctx, canvas) {
+        if (this.dataArray.length < 2) return;
+        
+        const minValue = Math.min(...this.dataArray);
+        const maxValue = Math.max(...this.dataArray);
+        const range = maxValue - minValue || 1000;
+        
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        for (let i = 0; i < this.dataArray.length; i++) {
+            const x = (i / (this.dataArray.length - 1)) * canvas.width;
+            const y = canvas.height - ((this.dataArray[i] - minValue) / range) * canvas.height;
+            
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        
+        ctx.stroke();
+    }
+    
+    async playHeartAnimation() {
+        if (this.heartImages.length === 0) return;
+        
+        for (let i = this.frameCount - 1; i >= 0; i--) {
+            this.heartCtx.clearRect(0, 0, this.heartCanvas.width, this.heartCanvas.height);
+            this.heartCtx.drawImage(this.heartImages[i], 0, 0);
+            await this.wait(this.frameDelay);
+        }
+    }
+    
+    wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+    
     async sendToESP(text) {
         if (!this.characteristic) {
             console.log("まだ接続されていません");
