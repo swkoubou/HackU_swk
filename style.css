@@ -1,0 +1,215 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
+    color: #fff;
+    overflow: hidden;
+}
+
+.game-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: white;
+    min-height: 100vh;
+}
+
+.game-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+#gameCanvas {
+    display: block;
+    margin: 0 auto;
+    border: 2px solid #00ffff;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.game-controls {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.instructions {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+.instructions p {
+    margin: 5px 0;
+}
+
+.bluetooth-controls {
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(0, 100, 255, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 100, 255, 0.3);
+}
+
+#thresholdControl {
+    margin: 10px 0;
+}
+
+#thresholdControl label {
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+#thresholdSlider {
+    width: 200px;
+    margin: 0 10px;
+}
+
+#thresholdValue {
+    font-weight: bold;
+    color: #00ffff;
+    font-size: 16px;
+}
+
+button {
+    background: linear-gradient(45deg, #ff6b35, #f7931e);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    margin: 5px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+}
+
+button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+button:disabled {
+    background: #666;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#connectBluetoothButton {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
+
+#connectBluetoothButton:hover {
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+}
+
+#startCommButton, #stopCommButton {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+}
+
+#startCommButton:hover, #stopCommButton:hover {
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+.game-over, .level-clear {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    padding: 40px;
+    border-radius: 15px;
+    text-align: center;
+    border: 2px solid #ff6b35;
+    box-shadow: 0 0 30px rgba(255, 107, 53, 0.5);
+}
+
+.game-over h2, .level-clear h2 {
+    color: #ff6b35;
+    margin-bottom: 20px;
+    font-size: 28px;
+}
+
+.game-over p, .level-clear p {
+    font-size: 18px;
+    margin-bottom: 20px;
+    color: #fff;
+}
+
+/* SVG要素のスタイル */
+.player-ship {
+    filter: drop-shadow(0 0 5px #00ff00);
+}
+
+.enemy-ship {
+    filter: drop-shadow(0 0 3px #ff0000);
+}
+
+.boss-ship {
+    filter: drop-shadow(0 0 8px #ff00ff);
+}
+
+.bullet {
+    filter: drop-shadow(0 0 3px currentColor);
+}
+
+.explosion {
+    filter: drop-shadow(0 0 10px #ffff00);
+}
+
+.star {
+    animation: twinkle 2s infinite;
+}
+
+@keyframes twinkle {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+@keyframes shoot {
+    from { transform: translateY(0); }
+    to { transform: translateY(-20px); }
+}
+
+.bullet {
+    animation: shoot 0.1s ease-out;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 900px) {
+    #gameCanvas {
+        width: 100%;
+        height: auto;
+    }
+    
+    .game-container {
+        padding: 10px;
+    }
+    
+    .game-info {
+        font-size: 16px;
+    }
+    
+    #thresholdSlider {
+        width: 150px;
+    }
+} 

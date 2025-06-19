@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVGインベーダーゲーム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-info">
+            <div class="score">スコア: <span id="score">0</span></div>
+            <div class="lives">残機: <span id="lives">3</span></div>
+            <div class="level">レベル: <span id="level">1</span></div>
+        </div>
+        
+        <svg id="gameCanvas" width="800" height="600" viewBox="0 0 800 600">
+            <!-- 背景 -->
+            <rect width="800" height="600" fill="#000011"/>
+            
+            <!-- 星背景 -->
+            <g id="stars"></g>
+            
+            <!-- ゲーム要素 -->
+            <g id="player"></g>
+            <g id="playerBullets"></g>
+            <g id="enemies"></g>
+            <g id="enemyBullets"></g>
+            <g id="explosions"></g>
+        </svg>
+        
+        <div class="game-controls">
+            <div class="instructions">
+                <p>操作方法:</p>
+                <p>← → : 左右移動</p>
+                <p>心拍で弾発射（スペースキー無効）</p>
+                <p>P : ポーズ</p>
+            </div>
+            <div class="bluetooth-controls">
+                <button id="connectBluetoothButton">Bluetooth接続</button>
+                <div id="thresholdControl" style="display:none; margin: 10px 0;">
+                    <label for="thresholdSlider">心拍しきい値: </label>
+                    <input type="range" id="thresholdSlider" min="1800" max="2300" value="2080" step="1">
+                    <span id="thresholdValue">2080</span>
+                </div>
+            </div>
+            <button id="startButton" disabled style="opacity: 0.5; cursor: not-allowed;">Bluetooth接続後にゲーム開始</button>
+            <button id="pauseButton" style="display:none;">ポーズ</button>
+        </div>
+        
+        <div id="gameOverScreen" class="game-over" style="display:none;">
+            <h2>ゲームオーバー</h2>
+            <p>最終スコア: <span id="finalScore">0</span></p>
+            <button id="restartButton">もう一度プレイ</button>
+        </div>
+        
+        <div id="levelClearScreen" class="level-clear" style="display:none;">
+            <h2>レベルクリア！</h2>
+            <p>ボーナス: <span id="bonusScore">0</span></p>
+            <button id="nextLevelButton">次のレベル</button>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>
