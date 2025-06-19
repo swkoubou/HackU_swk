@@ -23,7 +23,18 @@ class SpaceInvadersGame {
             height: 30,
             speed: 5,
             invulnerable: false,
-            invulnerableTime: 0
+            invulnerableTime: 0,
+            // より精密な当たり判定用のコリジョンボックス
+            collisionBoxes: [
+                // メインボディ（中央部分）
+                { x: -15, y: -10, width: 30, height: 20 },
+                // 上部（コックピット部分）
+                { x: -8, y: -15, width: 16, height: 10 },
+                // 左翼
+                { x: -20, y: -5, width: 10, height: 15 },
+                // 右翼
+                { x: 10, y: -5, width: 10, height: 15 }
+            ]
         };
         
         // 弾丸配列
@@ -66,6 +77,9 @@ class SpaceInvadersGame {
         this.lastBeatTime = 0;
         this.threshold = 1800;
         this.aboveThreshold = false;
+        
+        // デバッグ用
+        this.showCollisionBoxes = false; // 当たり判定表示フラグ
         
         // グラフ描画用
         this.graphCanvas = null;
@@ -294,50 +308,37 @@ class SpaceInvadersGame {
         g.setAttribute('class', 'boss-ship');
         g.setAttribute('transform', `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2})`);
         
-        // 外部SVGファイルを読み込み
-        fetch('svg/boss.svg')
-            .then(response => response.text())
-            .then(svgText => {
-                // SVG全体ではなく、<svg>タグの中身だけを抽出
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = svgText;
-                const svgElem = tempDiv.querySelector('svg');
-                if (svgElem) {
-                    // 元のサイズを取得
-                    const originalWidth = parseFloat(svgElem.getAttribute('width')) || 64;
-                    const originalHeight = parseFloat(svgElem.getAttribute('height')) || 64;
-                    
-                    // スケールを計算（ボスのサイズに合わせる）
-                    const scaleX = this.boss.width / originalWidth;
-                    const scaleY = this.boss.height / originalHeight;
-                    
-                    // 内容をコピー
-                    g.innerHTML = svgElem.innerHTML;
-                    
-                    // スケール変換を適用
-                    g.setAttribute('transform', 
-                        `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2}) scale(${scaleX}, ${scaleY})`);
-                    
-                    // 体力バーを追加（SVGの後に）
-                    this.addBossHealthBar(g);
-                    
-                    console.log(`ボスSVG読み込み完了 (${originalWidth}x${originalHeight} → ${this.boss.width}x${this.boss.height})`);
-                }
-            })
-            .catch(error => {
-                console.error('boss.svg読み込みエラー:', error);
-                // フォールバック：シンプルな図形を作成
-                g.innerHTML = `
-                    <polygon points="40,0 10,20 0,30 15,50 25,60 55,60 65,50 80,30 70,20" fill="#ff00ff" stroke="#cc00cc" stroke-width="2"/>
-                    <polygon points="20,30 30,35 50,35 60,30 40,45" fill="#aa00aa"/>
-                    <circle cx="25" cy="20" r="3" fill="#ffff00"/>
-                    <circle cx="55" cy="20" r="3" fill="#ffff00"/>
-                    <circle cx="40" cy="25" r="4" fill="#ff0000"/>
-                `;
-                // フォールバック時も体力バーを追加
-                this.addBossHealthBar(g);
-                console.log('ボスSVGフォールバック使用');
-            });
+        // PNG画像を読み込み
+        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        image.setAttribute('href', 'svg/boss.png');
+        image.setAttribute('x', '0');
+        image.setAttribute('y', '0');
+        image.setAttribute('width', this.boss.width);
+        image.setAttribute('height', this.boss.height);
+        
+        // 画像の読み込み完了を待つ
+        image.addEventListener('load', () => {
+            console.log(`ボスPNG読み込み完了 (${this.boss.width}x${this.boss.height})`);
+        });
+        
+        image.addEventListener('error', () => {
+            console.error('boss.png読み込みエラー、フォールバックを使用');
+            // フォールバック：シンプルな図形を作成
+            g.innerHTML = `
+                <polygon points="40,0 10,20 0,30 15,50 25,60 55,60 65,50 80,30 70,20" fill="#ff00ff" stroke="#cc00cc" stroke-width="2"/>
+                <polygon points="20,30 30,35 50,35 60,30 40,45" fill="#aa00aa"/>
+                <circle cx="25" cy="20" r="3" fill="#ffff00"/>
+                <circle cx="55" cy="20" r="3" fill="#ffff00"/>
+                <circle cx="40" cy="25" r="4" fill="#ff0000"/>
+            `;
+            this.addBossHealthBar(g);
+            console.log('ボスPNGフォールバック使用');
+        });
+        
+        g.appendChild(image);
+        
+        // 体力バーを追加
+        this.addBossHealthBar(g);
         
         return g;
     }
@@ -378,6 +379,12 @@ class SpaceInvadersGame {
             
             if (e.code === 'KeyP') {
                 this.togglePause();
+            }
+            
+            // デバッグ：当たり判定表示切り替え
+            if (e.code === 'KeyC') {
+                this.showCollisionBoxes = !this.showCollisionBoxes;
+                console.log(`当たり判定表示: ${this.showCollisionBoxes ? 'ON' : 'OFF'}`);
             }
             
             // ゲームオーバー時にEnterキーでリスタート
@@ -809,10 +816,35 @@ class SpaceInvadersGame {
     }
     
     isColliding(obj1, obj2) {
+        // プレイヤーとの衝突判定の場合、より精密な判定を使用
+        if (obj2 === this.player) {
+            return this.isCollidingWithPlayer(obj1);
+        } else if (obj1 === this.player) {
+            return this.isCollidingWithPlayer(obj2);
+        }
+        
+        // 通常の矩形同士の衝突判定
         return obj1.x < obj2.x + obj2.width/2 &&
                obj1.x + obj1.width/2 > obj2.x - obj2.width/2 &&
                obj1.y < obj2.y + obj2.height/2 &&
                obj1.y + obj1.height/2 > obj2.y - obj2.height/2;
+    }
+    
+    isCollidingWithPlayer(obj) {
+        // プレイヤーの複数のコリジョンボックスと衝突判定
+        for (const collisionBox of this.player.collisionBoxes) {
+            const playerBoxX = this.player.x + collisionBox.x;
+            const playerBoxY = this.player.y + collisionBox.y;
+            
+            // 各コリジョンボックスとの矩形衝突判定
+            if (obj.x - obj.width/2 < playerBoxX + collisionBox.width &&
+                obj.x + obj.width/2 > playerBoxX &&
+                obj.y - obj.height/2 < playerBoxY + collisionBox.height &&
+                obj.y + obj.height/2 > playerBoxY) {
+                return true;
+            }
+        }
+        return false;
     }
     
     createExplosion(x, y) {
