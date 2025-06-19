@@ -5,11 +5,15 @@ class SpaceInvadersGame {
         this.gameHeight = 600;
         
         // ゲーム状態
-        this.gameState = 'menu'; // menu, playing, paused, gameOver, levelClear
+        this.gameState = 'menu'; // menu, preparation, playing, paused, gameOver
         this.score = 0;
         this.lives = 3;
-        this.level = 1;
         this.isPaused = false;
+        
+        // 準備時間用
+        this.preparationTime = 10; // 10秒の準備時間
+        this.preparationTimer = 0;
+        this.preparationStartTime = 0;
         
         // プレイヤー
         this.player = {
@@ -17,7 +21,9 @@ class SpaceInvadersGame {
             y: 550,
             width: 40,
             height: 30,
-            speed: 5
+            speed: 5,
+            invulnerable: false,
+            invulnerableTime: 0
         };
         
         // 弾丸配列
@@ -32,6 +38,9 @@ class SpaceInvadersGame {
         this.explosions = [];
         this.stars = [];
         
+        // ボス登場フラグ
+        this.bossSpawning = false;
+        
         // キー入力
         this.keys = {};
         
@@ -40,6 +49,10 @@ class SpaceInvadersGame {
         this.enemyShootTimer = 0;
         this.enemyMoveTimer = 0;
         this.enemyDirection = 1; // 1: 右, -1: 左
+        
+        // 時間ベーススコア用
+        this.gameStartTime = 0;
+        this.gameTime = 0;
         
         // Bluetooth通信用
         this.characteristic = null;
@@ -51,7 +64,7 @@ class SpaceInvadersGame {
         this.alpha = 0.4;
         this.beatCount = 0;
         this.lastBeatTime = 0;
-        this.threshold = 2080;
+        this.threshold = 1800;
         this.aboveThreshold = false;
         
         // グラフ描画用
@@ -171,19 +184,24 @@ class SpaceInvadersGame {
         return g;
     }
     
+    setupUI() {
+        this.updateScore();
+        this.updateLives();
+    }
+    
     createLevel() {
         this.enemies = [];
         const enemiesGroup = document.getElementById('enemies');
         enemiesGroup.innerHTML = '';
         
-        // 通常の敵を作成
-        const rows = 5;
-        const cols = 10;
-        const enemyWidth = 30;
-        const enemyHeight = 25;
-        const spacing = 50;
-        const startX = 100;
-        const startY = 50;
+        // 通常の敵を作成（数を減らす：3×8→2×6）
+        const rows = 2;
+        const cols = 6;
+        const enemyWidth = 40; // サイズを大きく：30→40
+        const enemyHeight = 35; // サイズを大きく：25→35
+        const spacing = 80;
+        const startX = 200;
+        const startY = 80;
         
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -192,9 +210,8 @@ class SpaceInvadersGame {
                     y: startY + row * spacing,
                     width: enemyWidth,
                     height: enemyHeight,
-                    type: row < 2 ? 'weak' : 'normal',
-                    health: row < 2 ? 1 : 2,
-                    points: row < 2 ? 10 : 20
+                    type: row < 1 ? 'weak' : 'normal',
+                    health: 0.5 // 雑魚敵のHPをさらに半分に
                 };
                 
                 const enemySVG = this.createEnemySVG(enemy);
@@ -204,10 +221,10 @@ class SpaceInvadersGame {
             }
         }
         
-        // ボス敵を作成（レベル3以降）
-        if (this.level >= 3) {
-            this.createBoss();
-        }
+        // ボスは最初は作成しない（雑魚敵が3匹になったら登場）
+        this.boss = null;
+        
+        console.log(`レベル作成完了！初期敵数: ${this.enemies.length}, ボス出現条件: 敵が3匹になったとき`);
     }
     
     createEnemySVG(enemy) {
@@ -215,20 +232,42 @@ class SpaceInvadersGame {
         g.setAttribute('class', 'enemy-ship');
         g.setAttribute('transform', `translate(${enemy.x - enemy.width/2}, ${enemy.y - enemy.height/2})`);
         
-        if (enemy.type === 'weak') {
-            g.innerHTML = `
-                <polygon points="15,0 0,15 5,20 25,20 30,15" fill="#ff4444" stroke="#cc0000" stroke-width="1"/>
-                <circle cx="8" cy="8" r="1.5" fill="#ffff00"/>
-                <circle cx="22" cy="8" r="1.5" fill="#ffff00"/>
-            `;
-        } else {
-            g.innerHTML = `
-                <polygon points="15,0 0,18 6,25 24,25 30,18" fill="#ff6666" stroke="#cc0000" stroke-width="1"/>
-                <polygon points="10,18 20,18 15,25" fill="#cc0000"/>
-                <circle cx="8" cy="10" r="2" fill="#ffff00"/>
-                <circle cx="22" cy="10" r="2" fill="#ffff00"/>
-            `;
-        }
+        // 外部SVGファイルを読み込み
+        fetch('svg/zako.svg')
+            .then(response => response.text())
+            .then(svgText => {
+                // SVG全体ではなく、<svg>タグの中身だけを抽出
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = svgText;
+                const svgElem = tempDiv.querySelector('svg');
+                if (svgElem) {
+                    // 元のサイズを取得
+                    const originalWidth = parseFloat(svgElem.getAttribute('width')) || 64;
+                    const originalHeight = parseFloat(svgElem.getAttribute('height')) || 64;
+                    
+                    // スケールを計算（敵のサイズに合わせる）
+                    const scaleX = enemy.width / originalWidth;
+                    const scaleY = enemy.height / originalHeight;
+                    
+                    // 内容をコピー
+                    g.innerHTML = svgElem.innerHTML;
+                    
+                    // スケール変換を適用
+                    g.setAttribute('transform', 
+                        `translate(${enemy.x - enemy.width/2}, ${enemy.y - enemy.height/2}) scale(${scaleX}, ${scaleY})`);
+                    
+                    console.log(`雑魚敵SVG読み込み完了 (${originalWidth}x${originalHeight} → ${enemy.width}x${enemy.height})`);
+                }
+            })
+            .catch(error => {
+                console.error('zako.svg読み込みエラー:', error);
+                // フォールバック：シンプルな図形を作成
+                g.innerHTML = `
+                    <polygon points="20,0 0,20 7,27 33,27 40,20" fill="#ff4444" stroke="#cc0000" stroke-width="1"/>
+                    <circle cx="10" cy="12" r="2" fill="#ffff00"/>
+                    <circle cx="30" cy="12" r="2" fill="#ffff00"/>
+                `;
+            });
         
         return g;
     }
@@ -239,9 +278,8 @@ class SpaceInvadersGame {
             y: 100,
             width: 80,
             height: 60,
-            health: 10 + this.level * 5,
-            maxHealth: 10 + this.level * 5,
-            points: 500,
+            health: 8, // HPを半分に：15→8
+            maxHealth: 8, // 最大HPも調整
             moveDirection: 1,
             shootTimer: 0
         };
@@ -256,18 +294,75 @@ class SpaceInvadersGame {
         g.setAttribute('class', 'boss-ship');
         g.setAttribute('transform', `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2})`);
         
-        g.innerHTML = `
-            <polygon points="40,0 10,20 0,30 15,50 25,60 55,60 65,50 80,30 70,20" fill="#ff00ff" stroke="#cc00cc" stroke-width="2"/>
-            <polygon points="20,30 30,35 50,35 60,30 40,45" fill="#aa00aa"/>
-            <circle cx="25" cy="20" r="3" fill="#ffff00"/>
-            <circle cx="55" cy="20" r="3" fill="#ffff00"/>
-            <circle cx="40" cy="25" r="4" fill="#ff0000"/>
-            <!-- 体力バー -->
-            <rect x="10" y="65" width="60" height="4" fill="#333" stroke="#fff" stroke-width="0.5"/>
-            <rect x="10" y="65" width="${60 * (this.boss.health / this.boss.maxHealth)}" height="4" fill="#ff0000"/>
-        `;
+        // 外部SVGファイルを読み込み
+        fetch('svg/boss.svg')
+            .then(response => response.text())
+            .then(svgText => {
+                // SVG全体ではなく、<svg>タグの中身だけを抽出
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = svgText;
+                const svgElem = tempDiv.querySelector('svg');
+                if (svgElem) {
+                    // 元のサイズを取得
+                    const originalWidth = parseFloat(svgElem.getAttribute('width')) || 64;
+                    const originalHeight = parseFloat(svgElem.getAttribute('height')) || 64;
+                    
+                    // スケールを計算（ボスのサイズに合わせる）
+                    const scaleX = this.boss.width / originalWidth;
+                    const scaleY = this.boss.height / originalHeight;
+                    
+                    // 内容をコピー
+                    g.innerHTML = svgElem.innerHTML;
+                    
+                    // スケール変換を適用
+                    g.setAttribute('transform', 
+                        `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2}) scale(${scaleX}, ${scaleY})`);
+                    
+                    // 体力バーを追加（SVGの後に）
+                    this.addBossHealthBar(g);
+                    
+                    console.log(`ボスSVG読み込み完了 (${originalWidth}x${originalHeight} → ${this.boss.width}x${this.boss.height})`);
+                }
+            })
+            .catch(error => {
+                console.error('boss.svg読み込みエラー:', error);
+                // フォールバック：シンプルな図形を作成
+                g.innerHTML = `
+                    <polygon points="40,0 10,20 0,30 15,50 25,60 55,60 65,50 80,30 70,20" fill="#ff00ff" stroke="#cc00cc" stroke-width="2"/>
+                    <polygon points="20,30 30,35 50,35 60,30 40,45" fill="#aa00aa"/>
+                    <circle cx="25" cy="20" r="3" fill="#ffff00"/>
+                    <circle cx="55" cy="20" r="3" fill="#ffff00"/>
+                    <circle cx="40" cy="25" r="4" fill="#ff0000"/>
+                `;
+                // フォールバック時も体力バーを追加
+                this.addBossHealthBar(g);
+                console.log('ボスSVGフォールバック使用');
+            });
         
         return g;
+    }
+    
+    addBossHealthBar(parentG) {
+        // 体力バーを作成
+        const healthBarBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        healthBarBg.setAttribute('x', '10');
+        healthBarBg.setAttribute('y', this.boss.height + 5);
+        healthBarBg.setAttribute('width', '60');
+        healthBarBg.setAttribute('height', '4');
+        healthBarBg.setAttribute('fill', '#333');
+        healthBarBg.setAttribute('stroke', '#fff');
+        healthBarBg.setAttribute('stroke-width', '0.5');
+        
+        const healthBar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        healthBar.setAttribute('class', 'boss-health-bar');
+        healthBar.setAttribute('x', '10');
+        healthBar.setAttribute('y', this.boss.height + 5);
+        healthBar.setAttribute('width', 60 * (this.boss.health / this.boss.maxHealth));
+        healthBar.setAttribute('height', '4');
+        healthBar.setAttribute('fill', '#ff0000');
+        
+        parentG.appendChild(healthBarBg);
+        parentG.appendChild(healthBar);
     }
     
     setupEventListeners() {
@@ -283,6 +378,12 @@ class SpaceInvadersGame {
             
             if (e.code === 'KeyP') {
                 this.togglePause();
+            }
+            
+            // ゲームオーバー時にEnterキーでリスタート
+            if (e.code === 'Enter' && this.gameState === 'gameOver') {
+                e.preventDefault();
+                this.restartGame();
             }
         });
         
@@ -301,10 +402,6 @@ class SpaceInvadersGame {
         
         document.getElementById('restartButton').addEventListener('click', () => {
             this.restartGame();
-        });
-        
-        document.getElementById('nextLevelButton').addEventListener('click', () => {
-            this.nextLevel();
         });
         
         // Bluetoothボタンイベント
@@ -331,12 +428,6 @@ class SpaceInvadersGame {
         });
     }
     
-    setupUI() {
-        this.updateScore();
-        this.updateLives();
-        this.updateLevel();
-    }
-    
     startGame() {
         // Bluetooth接続の確認
         if (!this.characteristic) {
@@ -347,11 +438,30 @@ class SpaceInvadersGame {
         // しきい値の確認
         console.log(`現在のしきい値: ${this.threshold} でゲームを開始します`);
         
-        this.gameState = 'playing';
+        // ドックンカウントをリセット
+        this.beatCount = 0;
+        this.updateBeatCount();
+        
+        // ゲーム時間の初期化
+        this.gameTime = 0;
+        this.gameStartTime = 0; // 準備時間後に設定
+        this.score = 0;
+        
+        console.log('準備時間開始');
+        
+        this.gameState = 'preparation';
+        this.preparationStartTime = Date.now();
+        this.preparationTimer = 0;
+        
         document.getElementById('startButton').style.display = 'none';
         document.getElementById('pauseButton').style.display = 'inline-block';
+        document.getElementById('pauseButton').textContent = 'ポーズ';
+        
+        // 準備時間中の表示を開始
+        this.showPreparationScreen();
+        
         // しきい値コントロールはプレイ中も表示したまま
-        this.createLevel();
+        this.updateScore();
         this.gameLoop();
     }
     
@@ -363,24 +473,33 @@ class SpaceInvadersGame {
             this.gameState = 'playing';
             document.getElementById('pauseButton').textContent = 'ポーズ';
             this.gameLoop();
+        } else if (this.gameState === 'preparation') {
+            this.gameState = 'paused';
+            document.getElementById('pauseButton').textContent = '再開';
         }
     }
     
     shoot() {
-        if (this.gameState !== 'playing') return;
+        if (this.gameState !== 'playing' && this.gameState !== 'preparation') return;
         
-        const bullet = {
-            x: this.player.x,
-            y: this.player.y - this.player.height/2,
-            width: 4,
-            height: 10,
-            speed: 8
-        };
-        
-        const bulletSVG = this.createBulletSVG(bullet, '#00ff00');
-        document.getElementById('playerBullets').appendChild(bulletSVG);
-        bullet.element = bulletSVG;
-        this.playerBullets.push(bullet);
+        // 3発連続で発射
+        for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+                const bullet = {
+                    x: this.player.x + (i - 1) * 8, // 左右に少しずらして発射
+                    y: this.player.y - this.player.height/2,
+                    width: 4,
+                    height: 10,
+                    speed: 8,
+                    damage: 1 // プレイヤーの弾の威力
+                };
+                
+                const bulletSVG = this.createBulletSVG(bullet, '#00ff00');
+                document.getElementById('playerBullets').appendChild(bulletSVG);
+                bullet.element = bulletSVG;
+                this.playerBullets.push(bullet);
+            }, i * 50); // 50msずつ遅らせて発射
+        }
     }
     
     createBulletSVG(bullet, color) {
@@ -396,7 +515,7 @@ class SpaceInvadersGame {
     }
     
     gameLoop(currentTime = 0) {
-        if (this.gameState !== 'playing') return;
+        if (this.gameState !== 'playing' && this.gameState !== 'preparation') return;
         
         const deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
@@ -408,13 +527,28 @@ class SpaceInvadersGame {
     }
     
     update(deltaTime) {
+        // 準備時間中の処理
+        if (this.gameState === 'preparation') {
+            this.updatePreparationTimer();
+            this.updatePlayer();
+            this.updatePlayerInvulnerability(deltaTime);
+            this.updateBullets();
+            this.updateExplosions();
+            this.updateStars();
+            return; // 敵の処理はスキップ
+        }
+        
+        // 通常のゲーム処理
         this.updatePlayer();
+        this.updatePlayerInvulnerability(deltaTime);
         this.updateBullets();
         this.updateEnemies(deltaTime);
         this.updateBoss(deltaTime);
         this.updateExplosions();
         this.updateStars();
+        this.updateGameTime();
         this.checkCollisions();
+        this.checkBossSpawn();
         this.checkWinCondition();
     }
     
@@ -431,6 +565,16 @@ class SpaceInvadersGame {
         if (playerElement) {
             playerElement.setAttribute('transform', 
                 `translate(${this.player.x - this.player.width/2}, ${this.player.y - this.player.height/2})`);
+        }
+    }
+    
+    updatePlayerInvulnerability(deltaTime) {
+        if (this.player.invulnerable) {
+            this.player.invulnerableTime += deltaTime;
+            if (this.player.invulnerableTime > 1000) { // 1秒間無敵
+                this.player.invulnerable = false;
+                this.player.invulnerableTime = 0;
+            }
         }
     }
     
@@ -507,8 +651,8 @@ class SpaceInvadersGame {
     updateBoss(deltaTime) {
         if (!this.boss) return;
         
-        // ボスの移動
-        this.boss.x += this.boss.moveDirection * 2;
+        // ボスの移動（速度を遅くする：2→1）
+        this.boss.x += this.boss.moveDirection * 1;
         if (this.boss.x <= this.boss.width/2 || this.boss.x >= this.gameWidth - this.boss.width/2) {
             this.boss.moveDirection *= -1;
         }
@@ -525,7 +669,7 @@ class SpaceInvadersGame {
             `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2})`);
         
         // 体力バーを更新
-        const healthBar = this.boss.element.querySelector('rect:last-child');
+        const healthBar = this.boss.element.querySelector('.boss-health-bar');
         if (healthBar) {
             healthBar.setAttribute('width', 60 * (this.boss.health / this.boss.maxHealth));
         }
@@ -599,12 +743,12 @@ class SpaceInvadersGame {
                 
                 if (this.isColliding(bullet, enemy)) {
                     this.createExplosion(enemy.x, enemy.y);
-                    enemy.health--;
+                    enemy.health -= bullet.damage; // ダメージ計算を使用
                     
                     if (enemy.health <= 0) {
-                        this.score += enemy.points;
                         enemy.element.remove();
                         this.enemies.splice(j, 1);
+                        console.log(`敵を倒しました！残り敵数: ${this.enemies.length}`);
                     }
                     
                     bullet.element.remove();
@@ -617,13 +761,13 @@ class SpaceInvadersGame {
             // ボスとの衝突
             if (this.boss && this.isColliding(bullet, this.boss)) {
                 this.createExplosion(bullet.x, bullet.y);
-                this.boss.health--;
+                this.boss.health -= bullet.damage; // ダメージ計算を使用
                 
                 if (this.boss.health <= 0) {
-                    this.score += this.boss.points;
                     this.createExplosion(this.boss.x, this.boss.y);
                     this.boss.element.remove();
                     this.boss = null;
+                    console.log('ボスを倒しました！');
                 }
                 
                 bullet.element.remove();
@@ -636,8 +780,11 @@ class SpaceInvadersGame {
         for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
             const bullet = this.enemyBullets[i];
             
-            if (this.isColliding(bullet, this.player)) {
+            if (this.isColliding(bullet, this.player) && !this.player.invulnerable) {
                 this.createExplosion(this.player.x, this.player.y);
+                this.playerDamageEffect();
+                this.player.invulnerable = true;
+                this.player.invulnerableTime = 0;
                 this.lives--;
                 this.updateLives();
                 
@@ -654,6 +801,7 @@ class SpaceInvadersGame {
         // 敵がプレイヤーに到達した場合
         for (const enemy of this.enemies) {
             if (enemy.y > this.player.y - 50) {
+                this.playerDamageEffect();
                 this.gameOver();
                 break;
             }
@@ -692,59 +840,242 @@ class SpaceInvadersGame {
         });
     }
     
-    checkWinCondition() {
-        if (this.enemies.length === 0 && !this.boss) {
-            this.levelClear();
+    // プレイヤーダメージエフェクト
+    playerDamageEffect() {
+        const playerElement = document.querySelector('#player .player-ship');
+        if (!playerElement) return;
+        
+        // 軽量な赤いリングエフェクトを追加
+        const damageRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        damageRing.setAttribute('cx', this.player.x);
+        damageRing.setAttribute('cy', this.player.y);
+        damageRing.setAttribute('r', '20');
+        damageRing.setAttribute('fill', 'none');
+        damageRing.setAttribute('stroke', '#ff0000');
+        damageRing.setAttribute('stroke-width', '3');
+        damageRing.setAttribute('opacity', '0.8');
+        
+        // シンプルなリングアニメーション
+        const animateR = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        animateR.setAttribute('attributeName', 'r');
+        animateR.setAttribute('values', '20;40');
+        animateR.setAttribute('dur', '0.3s');
+        
+        const animateOpacity = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        animateOpacity.setAttribute('attributeName', 'opacity');
+        animateOpacity.setAttribute('values', '0.8;0');
+        animateOpacity.setAttribute('dur', '0.3s');
+        
+        damageRing.appendChild(animateR);
+        damageRing.appendChild(animateOpacity);
+        document.getElementById('explosions').appendChild(damageRing);
+        
+        // CSSアニメーションクラスを追加（transformは使用しない）
+        playerElement.classList.add('damaged');
+        
+        // 短時間でクリーンアップ
+        setTimeout(() => {
+            if (playerElement && playerElement.classList.contains('damaged')) {
+                playerElement.classList.remove('damaged');
+            }
+            if (damageRing && damageRing.parentNode) {
+                damageRing.remove();
+            }
+        }, 300);
+        
+        console.log('プレイヤーダメージエフェクト実行');
+    }
+    
+    // ボス登場チェック
+    checkBossSpawn() {
+        // デバッグ用：毎回チェック状況をログ出力
+        if (this.enemies.length <= 5) { // 5匹以下になったら詳細ログ
+            console.log(`ボス出現チェック - 敵数: ${this.enemies.length}, ボス存在: ${!!this.boss}, 登場処理中: ${this.bossSpawning}`);
+        }
+        
+        // 雑魚敵が exactly 3匹の時のみボスが登場（かつボスがまだ存在しない場合）
+        if (this.enemies.length === 3 && !this.boss && !this.bossSpawning) {
+            console.log(`🔴 ボス出現条件満たしました！雑魚敵がちょうど3匹になったのでボスが登場します！（現在の敵数: ${this.enemies.length}）`);
+            
+            this.bossSpawning = true; // 登場処理中フラグをON
+            
+            // ボス登場演出
+            this.showBossAppearanceEffect();
+            
+            // 少し遅れてボスを作成
+            setTimeout(() => {
+                this.createBoss();
+                this.bossSpawning = false; // フラグをリセット
+                console.log('ボス作成完了！');
+            }, 1000);
         }
     }
     
-    levelClear() {
-        this.gameState = 'levelClear';
-        const bonusScore = this.lives * 100 + 1000;
-        this.score += bonusScore;
+    // ボス登場演出
+    showBossAppearanceEffect() {
+        // 画面中央に警告メッセージを表示
+        const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warningText.setAttribute('x', this.gameWidth / 2);
+        warningText.setAttribute('y', this.gameHeight / 2);
+        warningText.setAttribute('text-anchor', 'middle');
+        warningText.setAttribute('fill', '#ff0000');
+        warningText.setAttribute('font-size', '48');
+        warningText.setAttribute('font-weight', 'bold');
+        warningText.setAttribute('opacity', '0');
+        warningText.textContent = 'WARNING! BOSS APPEARS!';
         
-        document.getElementById('bonusScore').textContent = bonusScore;
-        document.getElementById('levelClearScreen').style.display = 'block';
-        this.updateScore();
+        // 点滅アニメーション
+        const animateOpacity = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        animateOpacity.setAttribute('attributeName', 'opacity');
+        animateOpacity.setAttribute('values', '0;1;0;1;0;1;0');
+        animateOpacity.setAttribute('dur', '2s');
+        
+        warningText.appendChild(animateOpacity);
+        document.getElementById('explosions').appendChild(warningText);
+        
+        // 2秒後にメッセージを削除
+        setTimeout(() => {
+            if (warningText.parentNode) {
+                warningText.remove();
+            }
+        }, 2000);
+        
+        console.log('ボス登場警告を表示しました');
     }
     
-    nextLevel() {
-        this.level++;
-        this.updateLevel();
-        document.getElementById('levelClearScreen').style.display = 'none';
-        this.clearBullets();
-        this.createLevel();
-        this.gameState = 'playing';
-        this.gameLoop();
+    checkWinCondition() {
+        if (this.enemies.length === 0 && !this.boss) {
+            this.gameWin();
+        }
+    }
+    
+    gameWin() {
+        console.log('gameWin() が呼び出されました');
+        this.gameState = 'gameOver';
+        
+        // 段階的にゲームクリア画面を表示
+        setTimeout(() => {
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            console.log('gameOverScreen要素:', gameOverScreen);
+            
+            if (gameOverScreen) {
+                // クリア時のスタイルを追加
+                gameOverScreen.classList.add('win');
+                gameOverScreen.style.display = 'none';
+                
+                // コンテンツを設定
+                const titleElement = document.getElementById('gameOverTitle');
+                
+                if (titleElement) titleElement.textContent = 'ゲームクリア！';
+                
+                // 強制的に表示
+                gameOverScreen.style.display = 'block';
+                gameOverScreen.style.visibility = 'visible';
+                gameOverScreen.style.opacity = '1';
+                
+                console.log('ゲームクリア画面を表示しました');
+            } else {
+                console.error('gameOverScreen要素が見つかりません');
+                // 代替手段として直接HTMLに挿入
+                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:green;color:white;padding:50px;border:3px solid lime;z-index:10000;"><h2>ゲームクリア！</h2><button onclick="location.reload()">リスタート</button></div>';
+            }
+            
+            const pauseButton = document.getElementById('pauseButton');
+            if (pauseButton) pauseButton.style.display = 'none';
+        }, 100);
+        
+        console.log('ゲームクリア！');
     }
     
     gameOver() {
+        console.log('gameOver() が呼び出されました');
         this.gameState = 'gameOver';
-        document.getElementById('finalScore').textContent = this.score;
-        document.getElementById('gameOverScreen').style.display = 'block';
-        document.getElementById('pauseButton').style.display = 'none';
+        
+        // 段階的にゲームオーバー画面を表示
+        setTimeout(() => {
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            console.log('gameOverScreen要素:', gameOverScreen);
+            
+            if (gameOverScreen) {
+                // 既存のスタイルをクリア
+                gameOverScreen.classList.remove('win');
+                gameOverScreen.style.display = 'none';
+                
+                // コンテンツを設定
+                const titleElement = document.getElementById('gameOverTitle');
+                
+                if (titleElement) titleElement.textContent = 'ゲームオーバー';
+                
+                // 強制的に表示
+                gameOverScreen.style.display = 'block';
+                gameOverScreen.style.visibility = 'visible';
+                gameOverScreen.style.opacity = '1';
+                
+                console.log('ゲームオーバー画面を表示しました');
+            } else {
+                console.error('gameOverScreen要素が見つかりません');
+                // 代替手段として直接HTMLに挿入
+                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:black;color:white;padding:50px;border:3px solid red;z-index:10000;"><h2>ゲームオーバー</h2><button onclick="location.reload()">リスタート</button></div>';
+            }
+            
+            const pauseButton = document.getElementById('pauseButton');
+            if (pauseButton) pauseButton.style.display = 'none';
+        }, 100);
+        
+        console.log('ゲームオーバー');
     }
     
     restartGame() {
+        // ゲーム状態の完全リセット
         this.score = 0;
         this.lives = 3;
-        this.level = 1;
+        this.gameTime = 0;
+        this.gameStartTime = 0;
+        this.beatCount = 0;
+        this.lastBeatTime = 0;
+        this.bossSpawning = false; // ボス登場フラグもリセット
+        
+        // 準備時間状態もリセット
+        this.preparationTimer = 0;
+        this.preparationStartTime = 0;
+        
+        // プレイヤー位置のリセット
         this.player.x = 400;
         this.player.y = 550;
+        this.player.invulnerable = false;
+        this.player.invulnerableTime = 0;
         
+        // 弾丸と敵のクリア
         this.clearBullets();
         this.clearEnemies();
         this.explosions.forEach(explosion => explosion.element.remove());
         this.explosions = [];
         
+        // 準備画面があれば削除
+        const preparationScreen = document.getElementById('preparationScreen');
+        if (preparationScreen) {
+            preparationScreen.remove();
+        }
+        
+        // UI要素のリセット
+        this.updateBeatCount();
         document.getElementById('gameOverScreen').style.display = 'none';
+        
+        // データ配列をクリア（グラフのリセット）
+        this.dataArray = [];
+        if (this.graphCtx) {
+            this.graphCtx.clearRect(0, 0, this.graphCanvas.width, this.graphCanvas.height);
+        }
+        if (this.heartCtx) {
+            this.heartCtx.clearRect(0, 0, this.heartCanvas.width, this.heartCanvas.height);
+        }
         
         // Bluetooth接続状態をチェック
         if (this.characteristic) {
             // 接続済みの場合は通常のリスタート
             document.getElementById('startButton').style.display = 'inline-block';
             document.getElementById('startButton').textContent = 'しきい値を調整してゲーム開始';
-            document.getElementById('thresholdControl').style.display = 'block'; // しきい値調整を表示
+            document.getElementById('thresholdControl').style.display = 'block';
             document.getElementById('pauseButton').style.display = 'none';
             this.gameState = 'menu';
         } else {
@@ -765,7 +1096,8 @@ class SpaceInvadersGame {
         
         this.updateScore();
         this.updateLives();
-        this.updateLevel();
+        
+        console.log('ゲームがリスタートされました');
     }
     
     clearBullets() {
@@ -786,7 +1118,16 @@ class SpaceInvadersGame {
     }
     
     updateScore() {
-        document.getElementById('score').textContent = this.score;
+        const scoreElement = document.getElementById('score');
+        if (this.gameState === 'playing') {
+            // プレイ中は現在の経過時間を表示
+            scoreElement.textContent = `${this.gameTime}秒`;
+        } else {
+            // クリア後は最終タイムを表示
+            const minutes = Math.floor(this.score / 60);
+            const seconds = this.score % 60;
+            scoreElement.textContent = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+        }
     }
     
     updateLives() {
@@ -818,12 +1159,15 @@ class SpaceInvadersGame {
         return svg;
     }
     
-    updateLevel() {
-        document.getElementById('level').textContent = this.level;
-    }
-    
     updateAnimations() {
         // アニメーション更新（必要に応じて）
+    }
+    
+    updateGameTime() {
+        if (this.gameState === 'playing' && this.gameStartTime > 0) {
+            this.gameTime = Math.floor((Date.now() - this.gameStartTime) / 1000); // 秒単位
+            this.updateScore(); // 時間の更新と同時にスコア表示も更新
+        }
     }
     
     // Bluetooth接続機能
@@ -881,6 +1225,11 @@ class SpaceInvadersGame {
     }
 
     detectBeat(value) {
+        // ポーズ中はドックンカウントを停止
+        if (this.gameState === 'paused') {
+            return;
+        }
+        
         const now = Date.now();
         if (value > this.threshold && !this.aboveThreshold) {
             if (now - this.lastBeatTime > 300) {
@@ -894,8 +1243,10 @@ class SpaceInvadersGame {
                 // ドックンアニメーション実行
                 this.playHeartAnimation();
                 
-                // 弾を発射
-                this.shoot();
+                // 弾を発射（ゲーム中または準備時間中）
+                if (this.gameState === 'playing' || this.gameState === 'preparation') {
+                    this.shoot();
+                }
             }
             this.aboveThreshold = true;
         } else if (value < this.threshold) {
@@ -1042,7 +1393,128 @@ class SpaceInvadersGame {
         await this.sendToESP("stop");
         console.log("STOP");
     }
-}
+
+    showPreparationScreen() {
+        // 準備時間カウントダウン画面を表示
+        const preparationScreen = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        preparationScreen.setAttribute('id', 'preparationScreen');
+        
+        // 背景
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        background.setAttribute('x', '0');
+        background.setAttribute('y', '0');
+        background.setAttribute('width', this.gameWidth);
+        background.setAttribute('height', this.gameHeight);
+        background.setAttribute('fill', 'rgba(0, 0, 50, 0.8)');
+        preparationScreen.appendChild(background);
+        
+        // タイトル
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        title.setAttribute('x', this.gameWidth / 2);
+        title.setAttribute('y', 200);
+        title.setAttribute('text-anchor', 'middle');
+        title.setAttribute('fill', '#ffff00');
+        title.setAttribute('font-size', '36');
+        title.setAttribute('font-weight', 'bold');
+        title.textContent = '心拍数上げタイム！';
+        preparationScreen.appendChild(title);
+        
+        // 説明
+        const instruction = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        instruction.setAttribute('x', this.gameWidth / 2);
+        instruction.setAttribute('y', 250);
+        instruction.setAttribute('text-anchor', 'middle');
+        instruction.setAttribute('fill', '#ffffff');
+        instruction.setAttribute('font-size', '24');
+        instruction.textContent = '運動して心拍数を上げて弾を撃つ練習をしよう！';
+        preparationScreen.appendChild(instruction);
+        
+        // カウントダウン
+        const countdown = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        countdown.setAttribute('id', 'preparationCountdown');
+        countdown.setAttribute('x', this.gameWidth / 2);
+        countdown.setAttribute('y', 350);
+        countdown.setAttribute('text-anchor', 'middle');
+        countdown.setAttribute('fill', '#ff6666');
+        countdown.setAttribute('font-size', '72');
+        countdown.setAttribute('font-weight', 'bold');
+        countdown.textContent = this.preparationTime;
+        preparationScreen.appendChild(countdown);
+        
+        // 残り時間ラベル
+        const timerLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        timerLabel.setAttribute('x', this.gameWidth / 2);
+        timerLabel.setAttribute('y', 400);
+        timerLabel.setAttribute('text-anchor', 'middle');
+        timerLabel.setAttribute('fill', '#ffffff');
+        timerLabel.setAttribute('font-size', '20');
+        timerLabel.textContent = '残り時間（秒）';
+        preparationScreen.appendChild(timerLabel);
+        
+        document.getElementById('gameCanvas').appendChild(preparationScreen);
+    }
+    
+    updatePreparationTimer() {
+        const elapsed = (Date.now() - this.preparationStartTime) / 1000;
+        const remaining = Math.max(0, this.preparationTime - elapsed);
+        
+        const countdownElement = document.getElementById('preparationCountdown');
+        if (countdownElement) {
+            countdownElement.textContent = Math.ceil(remaining);
+        }
+        
+        // 準備時間終了
+        if (remaining <= 0) {
+            this.endPreparation();
+        }
+    }
+    
+    endPreparation() {
+        console.log('準備時間終了、ゲーム開始！');
+        
+        // 準備画面を削除
+        const preparationScreen = document.getElementById('preparationScreen');
+        if (preparationScreen) {
+            preparationScreen.remove();
+        }
+        
+        // ゲーム開始
+        this.gameState = 'playing';
+        this.gameStartTime = Date.now(); // ここで正式なゲーム時間を開始
+        this.createLevel();
+        
+        // ゲーム開始エフェクト
+        this.showGameStartEffect();
+    }
+    
+    showGameStartEffect() {
+        const gameStartText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        gameStartText.setAttribute('x', this.gameWidth / 2);
+        gameStartText.setAttribute('y', this.gameHeight / 2);
+        gameStartText.setAttribute('text-anchor', 'middle');
+        gameStartText.setAttribute('fill', '#00ff00');
+        gameStartText.setAttribute('font-size', '48');
+        gameStartText.setAttribute('font-weight', 'bold');
+        gameStartText.setAttribute('opacity', '1');
+        gameStartText.textContent = 'ゲーム開始！';
+        
+        // フェードアウトアニメーション
+        const animateOpacity = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        animateOpacity.setAttribute('attributeName', 'opacity');
+        animateOpacity.setAttribute('values', '1;1;0');
+        animateOpacity.setAttribute('dur', '2s');
+        
+        gameStartText.appendChild(animateOpacity);
+        document.getElementById('explosions').appendChild(gameStartText);
+        
+        // 2秒後にテキストを削除
+        setTimeout(() => {
+            if (gameStartText.parentNode) {
+                gameStartText.remove();
+            }
+        }, 2000);
+    }
+} 
 
 // ゲーム開始
 document.addEventListener('DOMContentLoaded', () => {
