@@ -705,10 +705,12 @@ class SpaceInvadersGame {
     }
     
     updatePlayer() {
-        if (this.keys['ArrowLeft'] && this.player.x > this.player.width/2) {
+        // 左移動: 矢印キー左 または Aキー
+        if ((this.keys['ArrowLeft'] || this.keys['KeyA']) && this.player.x > this.player.width/2) {
             this.player.x -= this.player.speed;
         }
-        if (this.keys['ArrowRight'] && this.player.x < this.gameWidth - this.player.width/2) {
+        // 右移動: 矢印キー右 または Dキー
+        if ((this.keys['ArrowRight'] || this.keys['KeyD']) && this.player.x < this.gameWidth - this.player.width/2) {
             this.player.x += this.player.speed;
         }
         
