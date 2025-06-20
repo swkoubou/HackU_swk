@@ -9,7 +9,7 @@
 <body>
     <div class="game-container">
         <div class="game-info">
-            <div class="score">タイム: <span id="score">0秒</span></div>
+            <div class="score">スコア: <span id="score">0</span></div>
             <div class="lives">ライフ <span id="lives"></span></div>
         </div>
         
@@ -53,10 +53,20 @@
                 <p>← → : 左右移動</p>
                 <p>心拍で弾発射</p>
                 <p>P : ポーズ</p>
+                <p>C : 当たり判定表示切り替え（デバッグ用）</p>
+                <p>Enter : ゲームオーバー時リスタート</p>
                 <p style="color: #ffff00; font-weight: bold;">※ゲーム開始前に10秒間の心拍数上げタイムがあります</p>
             </div>
             <div class="bluetooth-controls">
-                <button id="connectBluetoothButton">Bluetooth接続</button>
+                <div class="device-selection">
+                    <p style="margin: 10px 0;">デバイス接続:</p>  
+                    <div class="connect-buttons">
+                        <button id="connectDevice1Button" class="connect-device-button">Device 1 に接続</button>
+                        <button id="connectDevice2Button" class="connect-device-button">Device 2 に接続</button>
+                    </div>
+                    <p id="connectionStatus" style="margin: 10px 0; color: #888;">未接続</p>
+                </div>
+                <button id="disconnectBluetoothButton" style="display:none;">Bluetooth切断</button>
                 <div id="thresholdControl" style="display:none; margin: 10px 0;">
                     <label for="thresholdSlider">心拍しきい値: </label>
                     <input type="range" id="thresholdSlider" min="1600" max="2000" value="1800" step="1" style="width: 400px;">

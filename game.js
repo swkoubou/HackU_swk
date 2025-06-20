@@ -7,7 +7,7 @@ class SpaceInvadersGame {
         // ゲーム状態
         this.gameState = 'menu'; // menu, preparation, playing, paused, gameOver
         this.score = 0;
-        this.lives = 3;
+        this.lives = 5;
         this.isPaused = false;
         
         // 準備時間用
@@ -26,14 +26,14 @@ class SpaceInvadersGame {
             invulnerableTime: 0,
             // より精密な当たり判定用のコリジョンボックス
             collisionBoxes: [
-                // メインボディ（中央部分）
-                { x: -15, y: -10, width: 30, height: 20 },
-                // 上部（コックピット部分）
-                { x: -8, y: -15, width: 16, height: 10 },
-                // 左翼
-                { x: -20, y: -5, width: 10, height: 15 },
-                // 右翼
-                { x: 10, y: -5, width: 10, height: 15 }
+                // メインボディ（中央下部）
+                { x: -10, y: -8, width: 20, height: 16 },
+                // コックピット（上部中央）
+                { x: -4, y: -12, width: 8, height: 8 },
+                // 左翼（上部左）
+                { x: -14, y: -10, width: 6, height: 8 },
+                // 右翼（上部右）
+                { x: 8, y: -10, width: 6, height: 8 }
             ]
         };
         
@@ -43,7 +43,7 @@ class SpaceInvadersGame {
         
         // 敵配列
         this.enemies = [];
-        this.boss = null;
+        this.bosses = []; // ボス敵を配列で管理
         
         // エフェクト
         this.explosions = [];
@@ -51,6 +51,10 @@ class SpaceInvadersGame {
         
         // ボス登場フラグ
         this.bossSpawning = false;
+        // ボス討伐数を追跡
+        this.bossesDefeated = 0;
+        // 複数ボス生成中フラグ
+        this.spawningMultipleBosses = false;
         
         // キー入力
         this.keys = {};
@@ -67,9 +71,20 @@ class SpaceInvadersGame {
         
         // Bluetooth通信用
         this.characteristic = null;
-        this.device_name = 'ESP32';
-        this.service_uuid = '12345678-1234-1234-1234-1234567890ab';
-        this.characteristic_uuid = 'abcdefab-1234-1234-1234-abcdefabcdef';
+        this.isBluetoothConnected = false; // Bluetooth接続状態を追跡
+        this.selectedDevice = 'device1'; // デフォルトはdevice1
+        this.devices = {
+            device1: {
+                name: 'ESP32',
+                service_uuid: '12345678-1234-1234-1234-1234567890ab',
+                characteristic_uuid: 'abcdefab-1234-1234-1234-abcdefabcdef'
+            },
+            device2: {
+                name: 'ESP32-2',
+                service_uuid: '12345678-2234-2234-2234-1234567890ab',  
+                characteristic_uuid: 'abcdefab-2234-2234-2234-abcdefabcdef'
+            }
+        };
         this.dataArray = [];
         this.prevFiltered = 0;
         this.alpha = 0.4;
@@ -191,8 +206,31 @@ class SpaceInvadersGame {
                 tempDiv.innerHTML = svgText;
                 const svgElem = tempDiv.querySelector('svg');
                 if (svgElem) {
+                    // 元のサイズを取得
+                    const originalWidth = parseFloat(svgElem.getAttribute('width')) || 64;
+                    const originalHeight = parseFloat(svgElem.getAttribute('height')) || 64;
+                    
+                    // スケールを計算（プレイヤーのサイズに合わせる）
+                    const scaleX = this.player.width / originalWidth;
+                    const scaleY = this.player.height / originalHeight;
+                    
+                    // 内容をコピー
                     g.innerHTML = svgElem.innerHTML;
+                    
+                    // スケール変換を適用
+                    g.setAttribute('transform', 
+                        `translate(${this.player.x - this.player.width/2}, ${this.player.y - this.player.height/2}) scale(${scaleX}, ${scaleY})`);
+                    
+                    console.log(`プレイヤーSVG読み込み完了 (${originalWidth}x${originalHeight} → ${this.player.width}x${this.player.height})`);
                 }
+            })
+            .catch(error => {
+                console.error('player.svg読み込みエラー:', error);
+                // フォールバック：シンプルな図形を作成
+                g.innerHTML = `
+                    <polygon points="20,0 0,30 40,30" fill="#00ff00" stroke="#00cc00" stroke-width="1"/>
+                    <circle cx="20" cy="15" r="3" fill="#ffffff"/>
+                `;
             });
         
         return g;
@@ -201,6 +239,7 @@ class SpaceInvadersGame {
     setupUI() {
         this.updateScore();
         this.updateLives();
+        this.updateDeviceSwitchState(); // 初期状態でデバイススイッチを設定
     }
     
     createLevel() {
@@ -236,7 +275,7 @@ class SpaceInvadersGame {
         }
         
         // ボスは最初は作成しない（雑魚敵が3匹になったら登場）
-        this.boss = null;
+        this.bosses = [];
         
         console.log(`レベル作成完了！初期敵数: ${this.enemies.length}, ボス出現条件: 敵が3匹になったとき`);
     }
@@ -287,7 +326,13 @@ class SpaceInvadersGame {
     }
     
     createBoss() {
-        this.boss = {
+        // 最初のボス敵の設定
+        const bossIndex = this.bosses.length;
+        const baseShootInterval = 2400;
+        const shootInterval = baseShootInterval; // 最初のボスは基本間隔
+        const initialDelay = 1000; // 最初のボスは1秒後に射撃開始
+        
+        this.bosses.push({
             x: this.gameWidth / 2,
             y: 100,
             width: 80,
@@ -295,30 +340,34 @@ class SpaceInvadersGame {
             health: 8, // HPを半分に：15→8
             maxHealth: 8, // 最大HPも調整
             moveDirection: 1,
-            shootTimer: 0
-        };
+            shootTimer: initialDelay,
+            shootInterval: shootInterval,
+            bossId: bossIndex
+        });
         
         const bossSVG = this.createBossSVG();
         document.getElementById('enemies').appendChild(bossSVG);
-        this.boss.element = bossSVG;
+        this.bosses[this.bosses.length - 1].element = bossSVG;
+        
+        console.log(`最初のボス${bossIndex}を作成: 射撃間隔=${shootInterval}ms, 初期遅延=${initialDelay}ms`);
     }
     
     createBossSVG() {
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('class', 'boss-ship');
-        g.setAttribute('transform', `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2})`);
+        g.setAttribute('transform', `translate(${this.bosses[this.bosses.length - 1].x - this.bosses[this.bosses.length - 1].width/2}, ${this.bosses[this.bosses.length - 1].y - this.bosses[this.bosses.length - 1].height/2})`);
         
         // PNG画像を読み込み
         const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
         image.setAttribute('href', 'svg/boss.png');
         image.setAttribute('x', '0');
         image.setAttribute('y', '0');
-        image.setAttribute('width', this.boss.width);
-        image.setAttribute('height', this.boss.height);
+        image.setAttribute('width', this.bosses[this.bosses.length - 1].width);
+        image.setAttribute('height', this.bosses[this.bosses.length - 1].height);
         
         // 画像の読み込み完了を待つ
         image.addEventListener('load', () => {
-            console.log(`ボスPNG読み込み完了 (${this.boss.width}x${this.boss.height})`);
+            console.log(`ボスPNG読み込み完了 (${this.bosses[this.bosses.length - 1].width}x${this.bosses[this.bosses.length - 1].height})`);
         });
         
         image.addEventListener('error', () => {
@@ -347,7 +396,7 @@ class SpaceInvadersGame {
         // 体力バーを作成
         const healthBarBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         healthBarBg.setAttribute('x', '10');
-        healthBarBg.setAttribute('y', this.boss.height + 5);
+        healthBarBg.setAttribute('y', this.bosses[this.bosses.length - 1].height + 5);
         healthBarBg.setAttribute('width', '60');
         healthBarBg.setAttribute('height', '4');
         healthBarBg.setAttribute('fill', '#333');
@@ -357,8 +406,8 @@ class SpaceInvadersGame {
         const healthBar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         healthBar.setAttribute('class', 'boss-health-bar');
         healthBar.setAttribute('x', '10');
-        healthBar.setAttribute('y', this.boss.height + 5);
-        healthBar.setAttribute('width', 60 * (this.boss.health / this.boss.maxHealth));
+        healthBar.setAttribute('y', this.bosses[this.bosses.length - 1].height + 5);
+        healthBar.setAttribute('width', 60 * (this.bosses[this.bosses.length - 1].health / this.bosses[this.bosses.length - 1].maxHealth));
         healthBar.setAttribute('height', '4');
         healthBar.setAttribute('fill', '#ff0000');
         
@@ -398,41 +447,97 @@ class SpaceInvadersGame {
             this.keys[e.code] = false;
         });
         
+        // DOM要素の安全な取得とイベントリスナー設定
+        this.setupButtonEventListeners();
+        this.setupBluetoothEventListeners();
+        this.setupThresholdSliderListener();
+    }
+    
+    setupButtonEventListeners() {
         // ボタンイベント
-        document.getElementById('startButton').addEventListener('click', () => {
-            this.startGame();
-        });
+        const startButton = document.getElementById('startButton');
+        const pauseButton = document.getElementById('pauseButton');
+        const restartButton = document.getElementById('restartButton');
+
+        if (startButton) {
+            startButton.addEventListener('click', () => {
+                this.startGame();
+            });
+            console.log('startButton イベントリスナー設定完了');
+        } else {
+            console.error('startButton not found');
+        }
         
-        document.getElementById('pauseButton').addEventListener('click', () => {
-            this.togglePause();
-        });
+        if (pauseButton) {
+            pauseButton.addEventListener('click', () => {
+                this.togglePause();
+            });
+            console.log('pauseButton イベントリスナー設定完了');
+        } else {
+            console.error('pauseButton not found');
+        }
         
-        document.getElementById('restartButton').addEventListener('click', () => {
-            this.restartGame();
-        });
-        
+        if (restartButton) {
+            restartButton.addEventListener('click', () => {
+                this.restartGame();
+            });
+            console.log('restartButton イベントリスナー設定完了');
+        } else {
+            console.error('restartButton not found');
+        }
+    }
+    
+    setupBluetoothEventListeners() {
         // Bluetoothボタンイベント
-        document.getElementById('connectBluetoothButton').addEventListener('click', () => {
-            this.connectToBluetooth();
-        });
-        
-        // 通信開始・終了ボタンのイベントリスナーを削除（自動化されているため不要）
-        // document.getElementById('startCommButton').addEventListener('click', () => {
-        //     this.sendStart();
-        // });
-        
-        // document.getElementById('stopCommButton').addEventListener('click', () => {
-        //     this.sendStop();
-        // });
-        
+        const connectDevice1Button = document.getElementById('connectDevice1Button');
+        const connectDevice2Button = document.getElementById('connectDevice2Button');
+        const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
+
+        if (connectDevice1Button) {
+            connectDevice1Button.addEventListener('click', () => {
+                this.connectToDevice('device1');
+            });
+            console.log('connectDevice1Button イベントリスナー設定完了');
+        } else {
+            console.error('connectDevice1Button not found');
+        }
+
+        if (connectDevice2Button) {
+            connectDevice2Button.addEventListener('click', () => {
+                this.connectToDevice('device2');
+            });
+            console.log('connectDevice2Button イベントリスナー設定完了');
+        } else {
+            console.error('connectDevice2Button not found');
+        }
+
+        if (disconnectBluetoothButton) {
+            disconnectBluetoothButton.addEventListener('click', () => {
+                this.disconnectBluetooth();
+            });
+            console.log('disconnectBluetoothButton イベントリスナー設定完了');
+        } else {
+            console.error('disconnectBluetoothButton not found');
+        }
+    }
+    
+    setupThresholdSliderListener() {
         // しきい値スライダーのイベント
         const thresholdSlider = document.getElementById("thresholdSlider");
         const thresholdValue = document.getElementById("thresholdValue");
-        thresholdSlider.addEventListener("input", () => {
-            this.threshold = parseInt(thresholdSlider.value);
-            thresholdValue.textContent = this.threshold;
-            console.log(`しきい値を ${this.threshold} に変更しました`);
-        });
+        
+        if (thresholdSlider && thresholdValue) {
+            thresholdSlider.addEventListener("input", () => {
+                this.threshold = parseInt(thresholdSlider.value);
+                thresholdValue.textContent = this.threshold;
+                console.log(`しきい値を ${this.threshold} に変更しました`);
+            });
+            console.log('thresholdSlider イベントリスナー設定完了');
+        } else {
+            console.error('thresholdSlider or thresholdValue not found');
+            if (!thresholdSlider) console.error('thresholdSlider要素が見つかりません');
+            if (!thresholdValue) console.error('thresholdValue要素が見つかりません');
+        }
     }
     
     startGame() {
@@ -453,6 +558,7 @@ class SpaceInvadersGame {
         this.gameTime = 0;
         this.gameStartTime = 0; // 準備時間後に設定
         this.score = 0;
+        this.updateScore(); // スコア表示を更新
         
         console.log('準備時間開始');
         
@@ -567,11 +673,53 @@ class SpaceInvadersGame {
             this.player.x += this.player.speed;
         }
         
-        // プレイヤーの位置を更新
+        // プレイヤーの位置を更新（スケールも維持）
         const playerElement = document.querySelector('#player .player-ship');
         if (playerElement) {
+            const scaleX = this.player.width / 64;
+            const scaleY = this.player.height / 64;
             playerElement.setAttribute('transform', 
-                `translate(${this.player.x - this.player.width/2}, ${this.player.y - this.player.height/2})`);
+                `translate(${this.player.x - this.player.width/2}, ${this.player.y - this.player.height/2}) scale(${scaleX}, ${scaleY})`);
+        }
+        
+        // 当たり判定ボックスの表示を更新
+        this.updateCollisionBoxes();
+    }
+    
+    updateCollisionBoxes() {
+        if (!this.showCollisionBoxes) {
+            this.removeCollisionBoxes();
+            return;
+        }
+        
+        // 既存のボックスを削除
+        this.removeCollisionBoxes();
+        
+        // 新しいボックスを追加
+        const collisionGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        collisionGroup.setAttribute('id', 'playerCollisionBoxes');
+        
+        this.player.collisionBoxes.forEach((box, index) => {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', this.player.x + box.x);
+            rect.setAttribute('y', this.player.y + box.y);
+            rect.setAttribute('width', box.width);
+            rect.setAttribute('height', box.height);
+            rect.setAttribute('fill', 'rgba(255, 0, 0, 0.3)');
+            rect.setAttribute('stroke', '#ff0000');
+            rect.setAttribute('stroke-width', '1');
+            rect.setAttribute('class', 'collision-box');
+            
+            collisionGroup.appendChild(rect);
+        });
+        
+        document.getElementById('gameCanvas').appendChild(collisionGroup);
+    }
+    
+    removeCollisionBoxes() {
+        const existingBoxes = document.getElementById('playerCollisionBoxes');
+        if (existingBoxes) {
+            existingBoxes.remove();
         }
     }
     
@@ -602,11 +750,24 @@ class SpaceInvadersGame {
         // 敵の弾
         for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
             const bullet = this.enemyBullets[i];
-            bullet.y += bullet.speed;
             
-            bullet.element.setAttribute('y', bullet.y - bullet.height/2);
+            // 散弾（velocityがある場合）とそうでない場合を分ける
+            if (bullet.velocityX !== undefined && bullet.velocityY !== undefined) {
+                // 散弾の移動
+                bullet.x += bullet.velocityX;
+                bullet.y += bullet.velocityY;
+                
+                bullet.element.setAttribute('x', bullet.x - bullet.width/2);
+                bullet.element.setAttribute('y', bullet.y - bullet.height/2);
+            } else {
+                // 通常の弾の移動
+                bullet.y += bullet.speed;
+                bullet.element.setAttribute('y', bullet.y - bullet.height/2);
+            }
             
-            if (bullet.y > this.gameHeight) {
+            // 画面外に出た弾を削除
+            if (bullet.y > this.gameHeight || bullet.y < 0 || 
+                bullet.x < 0 || bullet.x > this.gameWidth) {
                 bullet.element.remove();
                 this.enemyBullets.splice(i, 1);
             }
@@ -656,29 +817,35 @@ class SpaceInvadersGame {
     }
     
     updateBoss(deltaTime) {
-        if (!this.boss) return;
+        if (this.bosses.length === 0) return;
         
-        // ボスの移動（速度を遅くする：2→1）
-        this.boss.x += this.boss.moveDirection * 1;
-        if (this.boss.x <= this.boss.width/2 || this.boss.x >= this.gameWidth - this.boss.width/2) {
-            this.boss.moveDirection *= -1;
-        }
-        
-        // ボスの射撃
-        this.boss.shootTimer += deltaTime;
-        if (this.boss.shootTimer > 800) {
-            this.boss.shootTimer = 0;
-            this.bossShoot();
-        }
-        
-        // ボスの位置を更新
-        this.boss.element.setAttribute('transform', 
-            `translate(${this.boss.x - this.boss.width/2}, ${this.boss.y - this.boss.height/2})`);
-        
-        // 体力バーを更新
-        const healthBar = this.boss.element.querySelector('.boss-health-bar');
-        if (healthBar) {
-            healthBar.setAttribute('width', 60 * (this.boss.health / this.boss.maxHealth));
+        // 全てのボス敵を更新
+        for (let i = 0; i < this.bosses.length; i++) {
+            const boss = this.bosses[i];
+            
+            // ボスの移動
+            boss.x += boss.moveDirection * 1;
+            if (boss.x <= boss.width/2 || boss.x >= this.gameWidth - boss.width/2) {
+                boss.moveDirection *= -1;
+            }
+            
+            // ボスの射撃（各ボス固有の射撃間隔を使用）
+            boss.shootTimer += deltaTime;
+            if (boss.shootTimer > boss.shootInterval) {
+                boss.shootTimer = 0;
+                this.bossShoot(boss);
+                console.log(`ボス${boss.bossId}が射撃しました`);
+            }
+            
+            // ボスの位置を更新
+            boss.element.setAttribute('transform', 
+                `translate(${boss.x - boss.width/2}, ${boss.y - boss.height/2})`);
+            
+            // 体力バーを更新
+            const healthBar = boss.element.querySelector('.boss-health-bar');
+            if (healthBar) {
+                healthBar.setAttribute('width', 60 * (boss.health / boss.maxHealth));
+            }
         }
     }
     
@@ -697,22 +864,154 @@ class SpaceInvadersGame {
         this.enemyBullets.push(bullet);
     }
     
-    bossShoot() {
-        // ボスは3発同時に撃つ
-        for (let i = -1; i <= 1; i++) {
+    bossShoot(boss) {
+        // ボスIDに基づいて異なる射撃パターンを設定
+        const bossId = boss.bossId || 0;
+        const bulletCount = 5 + (bossId % 2) * 2; // ボス0,2,4は5発、ボス1,3,5は7発
+        const spreadAngle = Math.PI / 3 + (bossId % 2) * (Math.PI / 6); // 角度も変える
+        const startAngle = -spreadAngle / 2;
+        const bulletColor = bossId === 0 ? '#ff00ff' : (bossId % 2 === 0 ? '#ff4400' : '#44ff00');
+        
+        for (let i = 0; i < bulletCount; i++) {
+            const angle = startAngle + (spreadAngle / (bulletCount - 1)) * i;
             const bullet = {
-                x: this.boss.x + i * 20,
-                y: this.boss.y + this.boss.height/2,
+                x: boss.x,
+                y: boss.y + boss.height/2,
                 width: 6,
                 height: 12,
-                speed: 4
+                speed: 4,
+                velocityX: Math.sin(angle) * 4, // X方向の速度
+                velocityY: Math.cos(angle) * 4  // Y方向の速度
             };
             
-            const bulletSVG = this.createBulletSVG(bullet, '#ff00ff');
+            const bulletSVG = this.createBulletSVG(bullet, bulletColor);
             document.getElementById('enemyBullets').appendChild(bulletSVG);
             bullet.element = bulletSVG;
             this.enemyBullets.push(bullet);
         }
+    }
+    
+    // 2匹のボス敵を生成する関数
+    spawnTwoBosses() {
+        // 複数ボス生成が既に進行中の場合は実行しない
+        if (this.spawningMultipleBosses) {
+            console.log('複数ボス生成が既に進行中です');
+            return;
+        }
+        
+        this.spawningMultipleBosses = true;
+        console.log('2匹のボス敵を生成します！');
+        
+        // 警告メッセージを表示
+        this.showBossMultipleAppearanceEffect();
+        
+        setTimeout(() => {
+            // 左側のボス
+            this.createBossAtPosition(this.gameWidth * 0.25, 100);
+            
+            // 右側のボス
+            this.createBossAtPosition(this.gameWidth * 0.75, 100);
+            
+            this.spawningMultipleBosses = false;
+            console.log(`2匹のボス敵を生成完了！現在のボス数: ${this.bosses.length}`);
+        }, 1500);
+    }
+    
+    // 指定位置にボス敵を作成
+    createBossAtPosition(x, y) {
+        // ボスの番号に基づいて異なる射撃間隔を設定
+        const bossIndex = this.bosses.length;
+        const baseShootInterval = 2400;
+        const shootInterval = baseShootInterval + (bossIndex * 400); // 各ボス400ms間隔をずらす
+        const initialDelay = bossIndex * 800; // 初期射撃タイミングも大きくずらす
+        
+        this.bosses.push({
+            x: x,
+            y: y,
+            width: 80,
+            height: 60,
+            health: 10,
+            maxHealth: 10,
+            moveDirection: Math.random() > 0.5 ? 1 : -1, // ランダムな初期方向
+            shootTimer: initialDelay, // 初期射撃遅延を大きくずらす
+            shootInterval: shootInterval, // 各ボス固有の射撃間隔
+            bossId: bossIndex // ボス識別用ID
+        });
+        
+        const bossSVG = this.createBossSVGAtPosition(x, y);
+        document.getElementById('enemies').appendChild(bossSVG);
+        this.bosses[this.bosses.length - 1].element = bossSVG;
+        
+        console.log(`ボス${bossIndex}を作成: 射撃間隔=${shootInterval}ms, 初期遅延=${initialDelay}ms`);
+    }
+    
+    // 指定位置にボスSVGを作成
+    createBossSVGAtPosition(x, y) {
+        const boss = this.bosses[this.bosses.length - 1];
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'boss-ship');
+        g.setAttribute('transform', `translate(${x - boss.width/2}, ${y - boss.height/2})`);
+        
+        // PNG画像を読み込み
+        const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        image.setAttribute('href', 'svg/boss.png');
+        image.setAttribute('x', '0');
+        image.setAttribute('y', '0');
+        image.setAttribute('width', boss.width);
+        image.setAttribute('height', boss.height);
+        
+        image.addEventListener('load', () => {
+            console.log(`ボスPNG読み込み完了 (${boss.width}x${boss.height})`);
+        });
+        
+        image.addEventListener('error', () => {
+            console.log('ボスPNG読み込み失敗、代替図形を作成');
+            g.removeChild(image);
+            
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', '0');
+            rect.setAttribute('y', '0');
+            rect.setAttribute('width', boss.width);
+            rect.setAttribute('height', boss.height);
+            rect.setAttribute('fill', '#8B0000');
+            rect.setAttribute('stroke', '#FF0000');
+            rect.setAttribute('stroke-width', '2');
+            g.appendChild(rect);
+        });
+        
+        g.appendChild(image);
+        this.addBossHealthBar(g);
+        
+        return g;
+    }
+    
+    // 複数ボス登場演出
+    showBossMultipleAppearanceEffect() {
+        const warningText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        warningText.setAttribute('x', this.gameWidth / 2);
+        warningText.setAttribute('y', this.gameHeight / 2);
+        warningText.setAttribute('text-anchor', 'middle');
+        warningText.setAttribute('fill', '#ff4444');
+        warningText.setAttribute('font-size', '36');
+        warningText.setAttribute('font-weight', 'bold');
+        warningText.setAttribute('opacity', '0');
+        warningText.textContent = 'DOUBLE BOSS ATTACK!';
+        
+        const animateOpacity = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        animateOpacity.setAttribute('attributeName', 'opacity');
+        animateOpacity.setAttribute('values', '0;1;0;1;0;1;0');
+        animateOpacity.setAttribute('dur', '2s');
+        
+        warningText.appendChild(animateOpacity);
+        document.getElementById('explosions').appendChild(warningText);
+        
+        setTimeout(() => {
+            if (warningText.parentNode) {
+                warningText.remove();
+            }
+        }, 2000);
+        
+        console.log('複数ボス登場警告を表示しました');
     }
     
     updateExplosions() {
@@ -755,7 +1054,8 @@ class SpaceInvadersGame {
                     if (enemy.health <= 0) {
                         enemy.element.remove();
                         this.enemies.splice(j, 1);
-                        console.log(`敵を倒しました！残り敵数: ${this.enemies.length}`);
+                        this.score += 30; // 雑魚敵を倒したら30ポイント
+                        console.log(`敵を倒しました！残り敵数: ${this.enemies.length}, スコア: ${this.score}`);
                     }
                     
                     bullet.element.remove();
@@ -766,20 +1066,31 @@ class SpaceInvadersGame {
             }
             
             // ボスとの衝突
-            if (this.boss && this.isColliding(bullet, this.boss)) {
-                this.createExplosion(bullet.x, bullet.y);
-                this.boss.health -= bullet.damage; // ダメージ計算を使用
-                
-                if (this.boss.health <= 0) {
-                    this.createExplosion(this.boss.x, this.boss.y);
-                    this.boss.element.remove();
-                    this.boss = null;
-                    console.log('ボスを倒しました！');
+            for (let bossIndex = this.bosses.length - 1; bossIndex >= 0; bossIndex--) {
+                const boss = this.bosses[bossIndex];
+                if (this.isColliding(bullet, boss)) {
+                    this.createExplosion(bullet.x, bullet.y);
+                    boss.health -= bullet.damage;
+                    
+                    if (boss.health <= 0) {
+                        this.createExplosion(boss.x, boss.y);
+                        boss.element.remove();
+                        this.bosses.splice(bossIndex, 1);
+                        this.bossesDefeated++;
+                        this.score += 100; // ボス敵を倒したら100ポイント
+                        console.log(`ボスを倒しました！討伐数: ${this.bossesDefeated}, スコア: ${this.score}`);
+                        
+                        // ボスを倒した後に2匹のボス敵を生成
+                        setTimeout(() => {
+                            this.spawnTwoBosses();
+                        }, 1000);
+                    }
+                    
+                    bullet.element.remove();
+                    this.playerBullets.splice(i, 1);
+                    this.updateScore();
+                    break;
                 }
-                
-                bullet.element.remove();
-                this.playerBullets.splice(i, 1);
-                this.updateScore();
             }
         }
         
@@ -833,14 +1144,13 @@ class SpaceInvadersGame {
     isCollidingWithPlayer(obj) {
         // プレイヤーの複数のコリジョンボックスと衝突判定
         for (const collisionBox of this.player.collisionBoxes) {
-            const playerBoxX = this.player.x + collisionBox.x;
-            const playerBoxY = this.player.y + collisionBox.y;
+            // プレイヤーの中心座標からの相対位置を計算
+            const playerBoxX = this.player.x + collisionBox.x + collisionBox.width/2;
+            const playerBoxY = this.player.y + collisionBox.y + collisionBox.height/2;
             
-            // 各コリジョンボックスとの矩形衝突判定
-            if (obj.x - obj.width/2 < playerBoxX + collisionBox.width &&
-                obj.x + obj.width/2 > playerBoxX &&
-                obj.y - obj.height/2 < playerBoxY + collisionBox.height &&
-                obj.y + obj.height/2 > playerBoxY) {
+            // 各コリジョンボックスとの矩形衝突判定（中心座標ベース）
+            if (Math.abs(obj.x - playerBoxX) < (obj.width + collisionBox.width)/2 &&
+                Math.abs(obj.y - playerBoxY) < (obj.height + collisionBox.height)/2) {
                 return true;
             }
         }
@@ -922,11 +1232,11 @@ class SpaceInvadersGame {
     checkBossSpawn() {
         // デバッグ用：毎回チェック状況をログ出力
         if (this.enemies.length <= 5) { // 5匹以下になったら詳細ログ
-            console.log(`ボス出現チェック - 敵数: ${this.enemies.length}, ボス存在: ${!!this.boss}, 登場処理中: ${this.bossSpawning}`);
+            console.log(`ボス出現チェック - 敵数: ${this.enemies.length}, ボス存在: ${this.bosses.length > 0}, 登場処理中: ${this.bossSpawning}`);
         }
         
         // 雑魚敵が exactly 3匹の時のみボスが登場（かつボスがまだ存在しない場合）
-        if (this.enemies.length === 3 && !this.boss && !this.bossSpawning) {
+        if (this.enemies.length === 3 && this.bosses.length === 0 && !this.bossSpawning) {
             console.log(`🔴 ボス出現条件満たしました！雑魚敵がちょうど3匹になったのでボスが登場します！（現在の敵数: ${this.enemies.length}）`);
             
             this.bossSpawning = true; // 登場処理中フラグをON
@@ -976,7 +1286,14 @@ class SpaceInvadersGame {
     }
     
     checkWinCondition() {
-        if (this.enemies.length === 0 && !this.boss) {
+        // 雑魚敵がいない、かつボス敵がいない、かつ3匹以上のボス敵を倒した場合、
+        // かつボス生成処理中でない場合にゲームクリア
+        if (this.enemies.length === 0 && 
+            this.bosses.length === 0 && 
+            this.bossesDefeated >= 3 && 
+            !this.spawningMultipleBosses && 
+            !this.bossSpawning) {
+            console.log(`ゲームクリア条件達成！討伐したボス数: ${this.bossesDefeated}`);
             this.gameWin();
         }
     }
@@ -1060,12 +1377,14 @@ class SpaceInvadersGame {
     restartGame() {
         // ゲーム状態の完全リセット
         this.score = 0;
-        this.lives = 3;
+        this.lives = 5;
         this.gameTime = 0;
         this.gameStartTime = 0;
         this.beatCount = 0;
         this.lastBeatTime = 0;
         this.bossSpawning = false; // ボス登場フラグもリセット
+        this.bossesDefeated = 0; // ボス討伐数もリセット
+        this.spawningMultipleBosses = false; // 複数ボス生成フラグもリセット
         
         // 準備時間状態もリセット
         this.preparationTimer = 0;
@@ -1088,6 +1407,9 @@ class SpaceInvadersGame {
         if (preparationScreen) {
             preparationScreen.remove();
         }
+        
+        // 当たり判定ボックスも削除
+        this.removeCollisionBoxes();
         
         // UI要素のリセット
         this.updateBeatCount();
@@ -1143,23 +1465,13 @@ class SpaceInvadersGame {
         this.enemies.forEach(enemy => enemy.element.remove());
         this.enemies = [];
         
-        if (this.boss) {
-            this.boss.element.remove();
-            this.boss = null;
-        }
+        this.bosses.forEach(boss => boss.element.remove());
+        this.bosses = [];
     }
     
     updateScore() {
         const scoreElement = document.getElementById('score');
-        if (this.gameState === 'playing') {
-            // プレイ中は現在の経過時間を表示
-            scoreElement.textContent = `${this.gameTime}秒`;
-        } else {
-            // クリア後は最終タイムを表示
-            const minutes = Math.floor(this.score / 60);
-            const seconds = this.score % 60;
-            scoreElement.textContent = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
-        }
+        scoreElement.textContent = `${this.score}点`;
     }
     
     updateLives() {
@@ -1195,41 +1507,143 @@ class SpaceInvadersGame {
         // アニメーション更新（必要に応じて）
     }
     
-    updateGameTime() {
+        updateGameTime() {
         if (this.gameState === 'playing' && this.gameStartTime > 0) {
             this.gameTime = Math.floor((Date.now() - this.gameStartTime) / 1000); // 秒単位
             this.updateScore(); // 時間の更新と同時にスコア表示も更新
         }
     }
-    
+
+    selectDevice(deviceKey) {
+        this.selectedDevice = deviceKey;
+        
+        // 選択されたデバイス情報を表示
+        const device = this.devices[deviceKey];
+        console.log(`デバイスを${device.name}に切り替えました`);
+    }
+
+    getCurrentDeviceInfo() {
+        return this.devices[this.selectedDevice];
+    }
+
+    updateDeviceSwitchState() {
+        const connectDevice1Button = document.getElementById('connectDevice1Button');
+        const connectDevice2Button = document.getElementById('connectDevice2Button');
+        const connectionStatus = document.getElementById('connectionStatus');
+        
+        if (!connectDevice1Button || !connectDevice2Button || !connectionStatus) {
+            console.warn('Device switch elements not found');
+            return;
+        }
+        
+        if (this.isBluetoothConnected) {
+            // 接続中はボタンを無効化
+            connectDevice1Button.disabled = true;
+            connectDevice2Button.disabled = true;
+            
+            connectionStatus.textContent = `${this.devices[this.selectedDevice].name} に接続中`;
+            connectionStatus.style.color = '#00ff00';
+        } else {
+            // 切断中はボタンを有効化
+            connectDevice1Button.disabled = false;
+            connectDevice2Button.disabled = false;
+            
+            connectionStatus.textContent = '未接続';
+            connectionStatus.style.color = '#888';
+        }
+    }
+
+    // 指定されたデバイスに接続
+    async connectToDevice(deviceKey) {
+        this.selectDevice(deviceKey);
+        await this.connectToBluetooth();
+    }
+
+    // Bluetooth切断機能
+    async disconnectBluetooth() {
+        try {
+            if (this.characteristic && this.characteristic.service.device.gatt.connected) {
+                await this.characteristic.service.device.gatt.disconnect();
+            }
+            
+            this.characteristic = null;
+            this.isBluetoothConnected = false;
+            
+            // UIを初期状態に戻す
+            const connectDevice1Button = document.getElementById('connectDevice1Button');
+            const connectDevice2Button = document.getElementById('connectDevice2Button');
+            const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
+            const thresholdControl = document.getElementById('thresholdControl');
+            const startButton = document.getElementById('startButton');
+            
+            if (connectDevice1Button) connectDevice1Button.style.display = 'inline-block';
+            if (connectDevice2Button) connectDevice2Button.style.display = 'inline-block';
+            if (disconnectBluetoothButton) disconnectBluetoothButton.style.display = 'none';
+            if (thresholdControl) thresholdControl.style.display = 'none';
+            
+            // ゲーム開始ボタンを無効化
+            if (startButton) {
+                startButton.disabled = true;
+                startButton.style.opacity = '0.5';
+                startButton.style.cursor = 'not-allowed';
+                startButton.textContent = 'Bluetooth接続後にゲーム開始';
+            }
+            
+            // デバイス選択スイッチを有効化
+            this.updateDeviceSwitchState();
+            
+            console.log('Bluetooth切断完了');
+            
+        } catch (error) {
+            console.log('Bluetooth切断エラー: ' + error);
+        }
+    }
+
     // Bluetooth接続機能
     async connectToBluetooth() {
         try {
-            console.log('Bluetooth接続を試行中...');
+            const deviceInfo = this.getCurrentDeviceInfo();
+            console.log(`Bluetooth接続を試行中... (${deviceInfo.name})`);
+            
             const device = await navigator.bluetooth.requestDevice({
-                filters: [{ name: this.device_name }],
-                optionalServices: [this.service_uuid]
+                filters: [{ name: deviceInfo.name }],
+                optionalServices: [deviceInfo.service_uuid]
             });
 
             const server = await device.gatt.connect();
-            const service = await server.getPrimaryService(this.service_uuid);
-            this.characteristic = await service.getCharacteristic(this.characteristic_uuid);
+            const service = await server.getPrimaryService(deviceInfo.service_uuid);
+            this.characteristic = await service.getCharacteristic(deviceInfo.characteristic_uuid);
 
             await this.characteristic.startNotifications();
             this.characteristic.addEventListener('characteristicvaluechanged', (event) => this.handleNotify(event));
 
             console.log('Bluetooth接続完了＆通知待機中');
             
+            // 接続状態を更新
+            this.isBluetoothConnected = true;
+            
             // 接続成功時にUI要素を更新
-            document.getElementById('connectBluetoothButton').style.display = 'none';
-            document.getElementById('thresholdControl').style.display = 'block';
+            const connectDevice1Button = document.getElementById('connectDevice1Button');
+            const connectDevice2Button = document.getElementById('connectDevice2Button');
+            const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
+            const thresholdControl = document.getElementById('thresholdControl');
+            const startButton = document.getElementById('startButton');
+            
+            if (connectDevice1Button) connectDevice1Button.style.display = 'none';
+            if (connectDevice2Button) connectDevice2Button.style.display = 'none';
+            if (disconnectBluetoothButton) disconnectBluetoothButton.style.display = 'inline-block';
+            if (thresholdControl) thresholdControl.style.display = 'block';
+            
+            // デバイス選択スイッチを無効化
+            this.updateDeviceSwitchState();
             
             // ゲーム開始ボタンを有効化
-            const startButton = document.getElementById('startButton');
-            startButton.disabled = false;
-            startButton.style.opacity = '1';
-            startButton.style.cursor = 'pointer';
-            startButton.textContent = 'しきい値を調整してゲーム開始';
+            if (startButton) {
+                startButton.disabled = false;
+                startButton.style.opacity = '1';
+                startButton.style.cursor = 'pointer';
+                startButton.textContent = 'しきい値を調整してゲーム開始';
+            }
             
             // 通信開始を自動実行
             await this.sendStart();
@@ -1239,6 +1653,9 @@ class SpaceInvadersGame {
         } catch (error) {
             console.log('Bluetooth接続エラー: ' + error);
             alert('Bluetooth接続に失敗しました。ESP32デバイスが近くにあることを確認してください。');
+            // 接続失敗時は接続状態をリセット
+            this.isBluetoothConnected = false;
+            this.updateDeviceSwitchState();
         }
     }
 
@@ -1550,5 +1967,50 @@ class SpaceInvadersGame {
 
 // ゲーム開始
 document.addEventListener('DOMContentLoaded', () => {
-    const game = new SpaceInvadersGame();
-}); 
+    console.log('DOM読み込み完了');
+    
+    // DOM要素の存在確認
+    const requiredElements = [
+        'gameCanvas', 'startButton', 'pauseButton', 'restartButton',
+        'connectDevice1Button', 'connectDevice2Button', 'disconnectBluetoothButton',
+        'thresholdSlider', 'thresholdValue', 'score', 'lives', 'beatCount'
+    ];
+    
+    let allElementsFound = true;
+    requiredElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.error(`必須要素が見つかりません: ${id}`);
+            allElementsFound = false;
+        }
+    });
+    
+    if (!allElementsFound) {
+        console.error('一部の必須DOM要素が見つかりません。少し待ってから再試行します。');
+        // 要素が見つからない場合はさらに遅延
+        setTimeout(() => initializeGame(), 500);
+    } else {
+        // 少し遅らせてゲームを初期化（全ての要素が確実に読み込まれるように）
+        setTimeout(() => initializeGame(), 200);
+    }
+});
+
+function initializeGame() {
+    try {
+        console.log('ゲーム初期化開始...');
+        const game = new SpaceInvadersGame();
+        console.log('ゲーム初期化完了');
+        
+        // グローバルスコープに追加（デバッグ用）
+        window.game = game;
+    } catch (error) {
+        console.error('ゲーム初期化エラー:', error);
+        console.error('エラー詳細:', error.stack);
+        
+        // エラーが発生した場合は少し待ってから再試行
+        setTimeout(() => {
+            console.log('ゲーム初期化を再試行します...');
+            initializeGame();
+        }, 1000);
+    }
+} 
