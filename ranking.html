@@ -7,7 +7,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, getDocs, addDoc, query, orderBy, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFirestore, collection, getDocs, addDoc, query, orderBy, deleteDoc, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
         
         // Firebase設定
         const firebaseConfig = {
@@ -34,6 +34,7 @@
         window.firestoreOrderBy = orderBy;
         window.firestoreDeleteDoc = deleteDoc;
         window.firestoreDoc = doc;
+        window.firestoreOnSnapshot = onSnapshot;
     </script>
     <style>
         * {
@@ -95,6 +96,34 @@
             font-size: 1.2rem;
             color: #ff6666;
             text-shadow: 0 0 10px rgba(255, 102, 102, 0.6);
+        }
+
+        .realtime-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #cccccc;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #00ff00;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background-color: #ff4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
 
 
@@ -274,6 +303,10 @@
         <div class="page-header">
             <h1 class="page-title">ランキング</h1>
             <p class="page-subtitle">あなたの戦績を確認しよう！</p>
+            <div class="realtime-status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">リアルタイム更新中</span>
+            </div>
         </div>
 
         <!-- スコアランキング -->
@@ -318,53 +351,107 @@
             });
         }
 
-        // Firestoreからユーザーデータを取得
-        async function getFirestoreUsers() {
-            try {
-              if (!isFirebaseReady) {
-                await waitForFirebase();
-              }
-          
-              const q = window.firestoreQuery(
-                window.firestoreCollection(window.firestoreDb, 'users'),
-                window.firestoreOrderBy('score', 'asc') // スコアで昇順ソート
-              );
-          
-              const querySnapshot = await window.firestoreGetDocs(q);
-              const users = [];
-          
-              querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                users.push({
-                  id: doc.id,
-                  name: data.name || 'Unknown Player',
-                  score: data.score || 0, // ← スコアとして取得
-                  date: data.createdAt
-                    ? new Date(data.createdAt.seconds * 1000).toLocaleString('ja-JP')
-                    : new Date().toLocaleString('ja-JP')
-                });
-              });
+        // リアルタイムリスナーの参照
+        let unsubscribe = null;
 
-    firestoreUsers = users;
-    console.log('Firestoreからユーザーデータを取得:', users);
-    return users;
-  } catch (error) {
-    console.error('Firestoreデータ取得エラー:', error);
-    return [];
-  }
-}
+        // Firestoreリアルタイムリスナーを設定
+        async function setupRealtimeListener() {
+            try {
+                if (!isFirebaseReady) {
+                    await waitForFirebase();
+                }
+                
+                const q = window.firestoreQuery(
+                    window.firestoreCollection(window.firestoreDb, 'users'),
+                    window.firestoreOrderBy('score', 'desc') // スコアで降順ソート
+                );
+                
+                // 既存のリスナーがあれば解除
+                if (unsubscribe) {
+                    unsubscribe();
+                }
+                
+                // リアルタイムリスナーを設定
+                unsubscribe = window.firestoreOnSnapshot(q, (querySnapshot) => {
+                    const users = [];
+                    
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        users.push({
+                            id: doc.id,
+                            name: data.name || 'Unknown Player',
+                            score: data.score || 0,
+                            date: data.createdAt
+                                ? new Date(data.createdAt.seconds * 1000).toLocaleString('ja-JP')
+                                : new Date().toLocaleString('ja-JP')
+                        });
+                    });
+                    
+                    firestoreUsers = users;
+                    console.log('リアルタイム更新:', users);
+                    
+                    // ステータスを更新
+                    updateConnectionStatus(true);
+                    
+                    // ランキングテーブルを即座に更新
+                    updateScoreRankingTable();
+                }, (error) => {
+                    console.error('リアルタイムリスナーエラー:', error);
+                    // ステータスを更新
+                    updateConnectionStatus(false);
+                    // エラー時はフォールバックとして一度だけ取得
+                    getFirestoreUsersOnce();
+                });
+                
+            } catch (error) {
+                console.error('リアルタイムリスナー設定エラー:', error);
+                // エラー時はフォールバックとして一度だけ取得
+                getFirestoreUsersOnce();
+            }
+        }
+
+        // フォールバック用の一回限りの取得
+        async function getFirestoreUsersOnce() {
+            try {
+                if (!isFirebaseReady) {
+                    await waitForFirebase();
+                }
+            
+                const q = window.firestoreQuery(
+                    window.firestoreCollection(window.firestoreDb, 'users'),
+                    window.firestoreOrderBy('score', 'desc') // スコアで降順ソート
+                );
+            
+                const querySnapshot = await window.firestoreGetDocs(q);
+                const users = [];
+            
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    users.push({
+                        id: doc.id,
+                        name: data.name || 'Unknown Player',
+                        score: data.score || 0,
+                        date: data.createdAt
+                            ? new Date(data.createdAt.seconds * 1000).toLocaleString('ja-JP')
+                            : new Date().toLocaleString('ja-JP')
+                    });
+                });
+
+                firestoreUsers = users;
+                console.log('Firestoreからユーザーデータを取得:', users);
+                updateScoreRankingTable();
+            } catch (error) {
+                console.error('Firestoreデータ取得エラー:', error);
+            }
+        }
 
         
 
-        // スコアランキングテーブルを更新
-        async function updateScoreRanking() {
+        // スコアランキングテーブルを更新（テーブル部分のみ）
+        function updateScoreRankingTable() {
             const tbody = document.getElementById('scoreTableBody');
-            tbody.innerHTML = '<tr><td colspan="4" class="no-data">読み込み中...</td></tr>';
             
             try {
-                // Firestoreからデータを取得
-                await getFirestoreUsers();
-                
                 // Firestoreデータにscoreがある場合のみ使用
                 const validFirebaseData = firestoreUsers.filter(user => 
                     user.score !== undefined && user.score > 0
@@ -379,13 +466,15 @@
                     return;
                 }
                 
-                // スコア順でソート（降順）
-                validFirebaseData.sort((a, b) => b.score - a.score);
-                
+                // データは既にソート済み（Firestoreクエリで降順ソート）
                 tbody.innerHTML = '';
                 validFirebaseData.forEach((record, index) => {
                     const row = document.createElement('tr');
                     const rank = index + 1;
+                    
+                    // 新しい行にアニメーション効果を追加
+                    row.style.opacity = '0';
+                    row.style.transform = 'translateY(10px)';
                     
                     row.innerHTML = `
                         <td class="rank-number ${getRankClass(rank)}">${rank}</td>
@@ -395,12 +484,33 @@
                     `;
                     
                     tbody.appendChild(row);
+                    
+                    // アニメーション実行
+                    setTimeout(() => {
+                        row.style.transition = 'all 0.3s ease';
+                        row.style.opacity = '1';
+                        row.style.transform = 'translateY(0)';
+                    }, index * 50); // 順次表示
                 });
                 
                 console.log(`ランキング表示完了: Firebase ${validFirebaseData.length}件`);
                 
             } catch (error) {
-                console.error('Firebase接続エラー:', error);
+                console.error('テーブル更新エラー:', error);
+                tbody.innerHTML = '<tr><td colspan="4" class="no-data">データの表示中にエラーが発生しました</td></tr>';
+            }
+        }
+
+        // 初期ランキング取得（リアルタイムリスナー設定）
+        async function initializeRanking() {
+            const tbody = document.getElementById('scoreTableBody');
+            tbody.innerHTML = '<tr><td colspan="4" class="no-data">読み込み中...</td></tr>';
+            
+            try {
+                // リアルタイムリスナーを設定
+                await setupRealtimeListener();
+            } catch (error) {
+                console.error('初期化エラー:', error);
                 tbody.innerHTML = '<tr><td colspan="4" class="no-data">Firebaseに接続できません</td></tr>';
             }
         }
@@ -422,6 +532,20 @@
         // }
 
 
+
+        // 接続ステータスを更新
+        function updateConnectionStatus(isConnected) {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            
+            if (isConnected) {
+                statusIndicator.classList.remove('disconnected');
+                statusText.textContent = 'リアルタイム更新中';
+            } else {
+                statusIndicator.classList.add('disconnected');
+                statusText.textContent = '接続エラー';
+            }
+        }
 
         
 
@@ -448,17 +572,26 @@
             }
         }
 
+        // ページが閉じられる時にリスナーをクリーンアップ
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribe) {
+                unsubscribe();
+                console.log('リアルタイムリスナーを停止しました');
+            }
+        });
+
         // 初期化
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                await updateScoreRanking();
+                // リアルタイムランキングを開始
+                await initializeRanking();
                 
                 // ボタンクリック時の効果音
                 document.querySelectorAll('button, .control-button').forEach(element => {
                     element.addEventListener('click', playClickSound);
                 });
                 
-                console.log('ランキング画面 読み込み完了');
+                console.log('ランキング画面 読み込み完了（リアルタイム更新対応）');
             } catch (error) {
                 console.error('初期化エラー:', error);
             }
