@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>結果発表</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: black;
+        font-family: sans-serif;
+      }
+      canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .result-box {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        z-index: 2;
+        transform: translate(-50%, -50%);
+        pointer-events: auto;
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 2rem;
+        border-radius: 1rem;
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+      }
+      .result-box h1 {
+        font-size: 2rem;
+        font-weight: bold;
+      }
+      .result-box p {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+      .result-box button {
+        background-color: #3b82f6;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-size: 1.125rem;
+        border: none;
+        cursor: pointer;
+        margin: 0.5rem;
+      }
+      #btns {
+        display: flex;
+        flex-direction: column;
+      }
+      .form-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #ffffff41;
+        z-index: 1;
+      }
+      .form {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="mainCanvas"></canvas>
+    <canvas id="extraCanvas1" style="display: none"></canvas> 
+    <canvas id="extraCanvas2" style="display: none"></canvas>
+
+    <div class="result-box">
+      <h1>🎉 結果発表！</h1>
+      <p id="msg">スコアに応じた演出を表示します</p>
+      <div id="score-info">スコア: <strong id="score">1000</strong>点</div>
+      <div id="btns">
+        <button onclick="restart()">ホーム画面へ</button>
+        <button onclick="createDataForm()">ランキング画面へ</button>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+      import {
+        getFirestore,
+        collection,
+        addDoc,
+      } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+      // "firebase" の情報
+      const firebaseConfig = {
+        apiKey: "AIzaSyBfCuUFAxzhxuHhPYFkH_-rhwsKB9XthCc",
+        authDomain: "hacku-8ea4e.firebaseapp.com",
+        projectId: "hacku-8ea4e",
+        storageBucket: "hacku-8ea4e.firebasestorage.app",
+        messagingSenderId: "91046515339",
+        appId: "1:91046515339:web:6cbbec4ef6d6e7b7287a8e",
+        measurementId: "G-K315PJD6CC",
+      };
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+
+      // "firebase" にデータを渡すための関数
+      async function addScore(name, score) {
+        try {
+          await addDoc(collection(db, "users"), {
+            name: name,
+            score: score,
+            createdAt: new Date(),
+          });
+          // 成功時にランキングページへ
+          window.location.href = `/ranking.html?name=${encodeURIComponent(
+            name
+          )}&score=${score}`;
+        } catch (e) {
+          console.error("エラー:", e);
+          const error = document.createElement("div");
+          error.textContent = "保存中にエラーが発生しました。";
+          error.style.display = "block";
+
+          document.appendChild(error);
+        }
+      }
+      window.addScore = addScore;
+    </script>
+    <script>
+      // "URL" から読み取った情報
+      const params = new URLSearchParams(window.location.search);
+      const score = Number(params.get("score"));
+      const beatCount = Number(params.get("beatCount"));
+
+      // リスタートボタンを押すと実行される
+      function restart() {
+        window.location.href = "/";
+      }
+
+      // データを送信するためのフォームを生成
+      function createDataForm() {
+        console.log("createDataForm 呼ばれた");
+
+        const resultBox = document.querySelector(".result-box");
+        resultBox.classList.add("hidden");
+
+        const formContainer = document.createElement("div");
+        const form = document.createElement("form");
+        formContainer.classList.add("form-container");
+        form.classList.add("form");
+        form.innerHTML = `
+        <input type="text" name="name" placeholder="名前を入力してください" autocomplete="off" required />
+        <button type="button" id="submit-btn">登録</button>
+      `;
+
+        formContainer.appendChild(form);
+        document.body.appendChild(formContainer);
+
+        // ボタンにイベントリスナーを追加
+        const submitButton = form.querySelector("#submit-btn");
+        submitButton.addEventListener('click', function() {
+          const formData = new FormData(form);
+          const name = formData.get("name");
+
+          if (name && name.trim()) {
+            window.addScore(name, score);
+          } else {
+            alert("名前を入力してください。");
+          }
+        });
+        
+        // フォームのsubmitイベントをキャンセル
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = new FormData(form);
+          const name = formData.get("name");
+
+          if (name && name.trim()) {
+            window.addScore(name, score);
+          } else {
+            alert("名前を入力してください。");
+          }
+        });
+      }
+
+      const canvas = document.getElementById("mainCanvas");
+      const ctx = canvas.getContext("2d");
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      const particles = [];
+      function createParticle() {
+        const x = Math.random() * canvas.width;
+        const y = canvas.height;
+        const vx = (Math.random() - 0.5) * 4;
+        const vy = -(Math.random() * 5 + 2);
+        const r = Math.random() * 3 + 2;
+        const color = `hsl(${Math.random() * 360}, 100%, 70%)`;
+        return { x, y, vx, vy, r, color, life: 0, maxLife: 100 };
+      }
+
+      setInterval(() => {
+        const count = Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+          particles.push(createParticle());
+        }
+      }, 100);
+
+      function draw() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          ctx.beginPath();
+          ctx.fillStyle = p.color;
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fill();
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.05;
+          p.life++;
+
+          if (p.life > p.maxLife) {
+            particles.splice(i, 1);
+          }
+        }
+
+        requestAnimationFrame(draw);
+      }
+      draw();
+
+      if (score >= 1000) {
+        document.getElementById("msg").innerText = "おめでとう！高スコア！！"; 
+        loadEffect2();
+      } else if (score >= 800) {
+        document.getElementById("msg").innerText = "すごい！いい感じ！";
+        loadEffect1();
+      } else {
+        document.getElementById("msg").innerText = "もう少し頑張ってみよう！！";
+      }
+
+      function loadEffect1() {
+        const canvas1 = document.getElementById("extraCanvas1");
+        canvas1.style.display = "block";
+        const ctx1 = canvas1.getContext("2d");
+        function resize() {
+          canvas1.width = window.innerWidth;
+          canvas1.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resize);
+        resize();
+        const particles = [];
+
+        function createParticle() {
+          const dir = Math.random() > 0.5 ? 1 : -1;
+          const x = dir === 1 ? 0 : canvas1.width;
+          const y = canvas1.height;
+          const vx = dir * (Math.random() * 3 + 2);
+          const vy = -Math.random() * 8 - 5;
+          const r = Math.random() * 4 + 4;
+          const color = `hsl(${Math.random() * 60 + 30}, 100%, 60%)`;
+          return { x, y, vx, vy, r, color, life: 0, maxLife: 60 };
+        }
+
+        function drawParticles() {
+          ctx1.globalCompositeOperation = "source-over";
+          ctx1.fillStyle = "rgba(0, 0, 0, 0.1)";
+          ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+          ctx1.globalCompositeOperation = "lighter";
+
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            ctx1.beginPath();
+            ctx1.fillStyle = p.color;
+            ctx1.shadowBlur = 20;
+            ctx1.shadowColor = p.color;
+            ctx1.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx1.fill();
+            ctx1.shadowBlur = 0;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.3;
+            p.life++;
+            if (p.life > p.maxLife) {
+              particles.splice(i, 1);
+            }
+          }
+
+          if (particles.length < 20) {
+            particles.push(createParticle());
+          }
+
+          requestAnimationFrame(drawParticles);
+        }
+        drawParticles();
+      }
+
+      function loadEffect2() {
+        const canvas2 = document.getElementById("extraCanvas2");
+        canvas2.style.display = "block";
+        const ctx2 = canvas2.getContext("2d");
+        canvas2.width = window.innerWidth;
+        canvas2.height = window.innerHeight;
+
+        class Particle {
+          constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.radius = Math.random() * 2 + 1;
+            this.angle = Math.random() * Math.PI * 2;
+            this.speed = Math.random() * 3 + 1;
+            this.life = 0;
+            this.maxLife = 50 + Math.random() * 50;
+            this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+          }
+          update() {
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+            this.life++;
+          }
+          draw(ctx) {
+            ctx.beginPath();
+            ctx.fillStyle = this.color;
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        class Firework {
+          constructor(startX, direction = "left") {
+            this.startX = startX;
+            this.startY = canvas2.height;
+            this.x = this.startX;
+            this.y = this.startY;
+            this.ctrlX =
+              this.startX +
+              (direction === "left" ? 1 : -1) * (Math.random() * 100 + 100);
+            this.ctrlY = (Math.random() * canvas2.height) / 2 + 100;
+            this.endX = this.ctrlX + (Math.random() * 50 - 25);
+            this.endY = this.ctrlY - 100;
+            this.progress = 0;
+            this.exploded = false;
+            this.color = "white";
+            this.radius = 3;
+          }
+          update() {
+            this.progress += 0.02;
+            if (this.progress >= 1) {
+              this.exploded = true;
+              explode(this.x, this.y);
+            } else {
+              const t = this.progress;
+              this.x =
+                (1 - t) * (1 - t) * this.startX +
+                2 * (1 - t) * t * this.ctrlX +
+                t * t * this.endX;
+              this.y =
+                (1 - t) * (1 - t) * this.startY +
+                2 * (1 - t) * t * this.ctrlY +
+                t * t * this.endY;
+            }
+          }
+          draw(ctx) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = this.color;
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        const fireworks = [];
+        const particles = [];
+
+        function explode(x, y) {
+          for (let i = 0; i < 30; i++) {
+            particles.push(new Particle(x, y));
+          }
+        }
+
+        function launchFireworks() {
+          const left = [50, 100, 150];
+          const right = [
+            canvas2.width - 50,
+            canvas2.width - 100,
+            canvas2.width - 150,
+          ];
+          left.forEach((x) => fireworks.push(new Firework(x, "left")));
+          right.forEach((x) => fireworks.push(new Firework(x, "right")));
+        }
+
+        launchFireworks();
+        setInterval(launchFireworks, 2000);
+
+        function animate() {
+          ctx2.clearRect(0, 0, canvas2.width, canvas2.height);
+
+          for (let i = fireworks.length - 1; i >= 0; i--) {
+            const fw = fireworks[i];
+            if (!fw.exploded) {
+              fw.update();
+              fw.draw(ctx2);
+            } else {
+              fireworks.splice(i, 1);
+            }
+          }
+
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.update();
+            p.draw(ctx2);
+            if (p.life > p.maxLife) particles.splice(i, 1);
+          }
+
+          requestAnimationFrame(animate);
+        }
+        animate();
+      }
+    </script>
+  </body>
+</html>
