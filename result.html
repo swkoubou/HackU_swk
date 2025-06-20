@@ -415,20 +415,36 @@
       }, 100);
     }
 
-    if (score >= 1000) {
+    if (score >= 1000) { //A4.mp3再生
       document.getElementById("msg").textContent = "おめでとう！高スコア！！";
+      // A4.mp3を再生
+      const audio = new Audio('A4.mp3');
+      audio.volume = 0.02;
+      audio.play().catch(e => console.log('音楽再生エラー:', e));
       firework();
       yellowFireworkEffect();
       mainEffect();
-    } else if (score >= 800) {
+    } else if (score >= 800) { //A3.mp3再生
       document.getElementById("msg").textContent = "すごい！いい感じ！";
+      // A3.mp3を再生
+      const audio = new Audio('A3.mp3');
+      audio.volume = 0.02;
+      audio.play().catch(e => console.log('音楽再生エラー:', e));
       yellowFireworkEffect();
       mainEffect();
-    } else if (score >= 500) {
+    } else if (score >= 500) { //A2.mp3再生
       document.getElementById("msg").textContent = "もう少し！";
+      // A2.mp3を再生
+      const audio = new Audio('A2.mp3');
+      audio.volume = 0.02;
+      audio.play().catch(e => console.log('音楽再生エラー:', e));
       mainEffect();
     } else {
       document.getElementById("msg").textContent = "次はもっと頑張ってみよう！";
+      // dead.mp3を再生
+      const audio = new Audio('dead.mp3');
+      audio.volume = 0.2; //良好
+      audio.play().catch(e => console.log('音楽再生エラー:', e));
       rainEffect();
     }
   </script>
