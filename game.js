@@ -71,20 +71,9 @@ class SpaceInvadersGame {
         
         // Bluetooth通信用
         this.characteristic = null;
-        this.isBluetoothConnected = false; // Bluetooth接続状態を追跡
-        this.selectedDevice = 'device1'; // デフォルトはdevice1
-        this.devices = {
-            device1: {
-                name: 'ESP32',
-                service_uuid: '12345678-1234-1234-1234-1234567890ab',
-                characteristic_uuid: 'abcdefab-1234-1234-1234-abcdefabcdef'
-            },
-            device2: {
-                name: 'ESP32-2',
-                service_uuid: '12345678-2234-2234-2234-1234567890ab',  
-                characteristic_uuid: 'abcdefab-2234-2234-2234-abcdefabcdef'
-            }
-        };
+        this.device_name = 'ESP32';
+        this.service_uuid = '12345678-1234-1234-1234-1234567890ab';
+        this.characteristic_uuid = 'abcdefab-1234-1234-1234-abcdefabcdef';
         this.dataArray = [];
         this.prevFiltered = 0;
         this.alpha = 0.4;
@@ -239,7 +228,6 @@ class SpaceInvadersGame {
     setupUI() {
         this.updateScore();
         this.updateLives();
-        this.updateDeviceSwitchState(); // 初期状態でデバイススイッチを設定
     }
     
     createLevel() {
@@ -447,97 +435,41 @@ class SpaceInvadersGame {
             this.keys[e.code] = false;
         });
         
-        // DOM要素の安全な取得とイベントリスナー設定
-        this.setupButtonEventListeners();
-        this.setupBluetoothEventListeners();
-        this.setupThresholdSliderListener();
-    }
-    
-    setupButtonEventListeners() {
         // ボタンイベント
-        const startButton = document.getElementById('startButton');
-        const pauseButton = document.getElementById('pauseButton');
-        const restartButton = document.getElementById('restartButton');
-
-        if (startButton) {
-            startButton.addEventListener('click', () => {
-                this.startGame();
-            });
-            console.log('startButton イベントリスナー設定完了');
-        } else {
-            console.error('startButton not found');
-        }
+        document.getElementById('startButton').addEventListener('click', () => {
+            this.startGame();
+        });
         
-        if (pauseButton) {
-            pauseButton.addEventListener('click', () => {
-                this.togglePause();
-            });
-            console.log('pauseButton イベントリスナー設定完了');
-        } else {
-            console.error('pauseButton not found');
-        }
+        document.getElementById('pauseButton').addEventListener('click', () => {
+            this.togglePause();
+        });
         
-        if (restartButton) {
-            restartButton.addEventListener('click', () => {
-                this.restartGame();
-            });
-            console.log('restartButton イベントリスナー設定完了');
-        } else {
-            console.error('restartButton not found');
-        }
-    }
-    
-    setupBluetoothEventListeners() {
+        document.getElementById('restartButton').addEventListener('click', () => {
+            this.restartGame();
+        });
+        
         // Bluetoothボタンイベント
-        const connectDevice1Button = document.getElementById('connectDevice1Button');
-        const connectDevice2Button = document.getElementById('connectDevice2Button');
-        const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
-
-        if (connectDevice1Button) {
-            connectDevice1Button.addEventListener('click', () => {
-                this.connectToDevice('device1');
-            });
-            console.log('connectDevice1Button イベントリスナー設定完了');
-        } else {
-            console.error('connectDevice1Button not found');
-        }
-
-        if (connectDevice2Button) {
-            connectDevice2Button.addEventListener('click', () => {
-                this.connectToDevice('device2');
-            });
-            console.log('connectDevice2Button イベントリスナー設定完了');
-        } else {
-            console.error('connectDevice2Button not found');
-        }
-
-        if (disconnectBluetoothButton) {
-            disconnectBluetoothButton.addEventListener('click', () => {
-                this.disconnectBluetooth();
-            });
-            console.log('disconnectBluetoothButton イベントリスナー設定完了');
-        } else {
-            console.error('disconnectBluetoothButton not found');
-        }
-    }
-    
-    setupThresholdSliderListener() {
+        document.getElementById('connectBluetoothButton').addEventListener('click', () => {
+            this.connectToBluetooth();
+        });
+        
+        // 通信開始・終了ボタンのイベントリスナーを削除（自動化されているため不要）
+        // document.getElementById('startCommButton').addEventListener('click', () => {
+        //     this.sendStart();
+        // });
+        
+        // document.getElementById('stopCommButton').addEventListener('click', () => {
+        //     this.sendStop();
+        // });
+        
         // しきい値スライダーのイベント
         const thresholdSlider = document.getElementById("thresholdSlider");
         const thresholdValue = document.getElementById("thresholdValue");
-        
-        if (thresholdSlider && thresholdValue) {
-            thresholdSlider.addEventListener("input", () => {
-                this.threshold = parseInt(thresholdSlider.value);
-                thresholdValue.textContent = this.threshold;
-                console.log(`しきい値を ${this.threshold} に変更しました`);
-            });
-            console.log('thresholdSlider イベントリスナー設定完了');
-        } else {
-            console.error('thresholdSlider or thresholdValue not found');
-            if (!thresholdSlider) console.error('thresholdSlider要素が見つかりません');
-            if (!thresholdValue) console.error('thresholdValue要素が見つかりません');
-        }
+        thresholdSlider.addEventListener("input", () => {
+            this.threshold = parseInt(thresholdSlider.value);
+            thresholdValue.textContent = this.threshold;
+            console.log(`しきい値を ${this.threshold} に変更しました`);
+        });
     }
     
     startGame() {
@@ -1507,143 +1439,41 @@ class SpaceInvadersGame {
         // アニメーション更新（必要に応じて）
     }
     
-        updateGameTime() {
+    updateGameTime() {
         if (this.gameState === 'playing' && this.gameStartTime > 0) {
             this.gameTime = Math.floor((Date.now() - this.gameStartTime) / 1000); // 秒単位
             this.updateScore(); // 時間の更新と同時にスコア表示も更新
         }
     }
-
-    selectDevice(deviceKey) {
-        this.selectedDevice = deviceKey;
-        
-        // 選択されたデバイス情報を表示
-        const device = this.devices[deviceKey];
-        console.log(`デバイスを${device.name}に切り替えました`);
-    }
-
-    getCurrentDeviceInfo() {
-        return this.devices[this.selectedDevice];
-    }
-
-    updateDeviceSwitchState() {
-        const connectDevice1Button = document.getElementById('connectDevice1Button');
-        const connectDevice2Button = document.getElementById('connectDevice2Button');
-        const connectionStatus = document.getElementById('connectionStatus');
-        
-        if (!connectDevice1Button || !connectDevice2Button || !connectionStatus) {
-            console.warn('Device switch elements not found');
-            return;
-        }
-        
-        if (this.isBluetoothConnected) {
-            // 接続中はボタンを無効化
-            connectDevice1Button.disabled = true;
-            connectDevice2Button.disabled = true;
-            
-            connectionStatus.textContent = `${this.devices[this.selectedDevice].name} に接続中`;
-            connectionStatus.style.color = '#00ff00';
-        } else {
-            // 切断中はボタンを有効化
-            connectDevice1Button.disabled = false;
-            connectDevice2Button.disabled = false;
-            
-            connectionStatus.textContent = '未接続';
-            connectionStatus.style.color = '#888';
-        }
-    }
-
-    // 指定されたデバイスに接続
-    async connectToDevice(deviceKey) {
-        this.selectDevice(deviceKey);
-        await this.connectToBluetooth();
-    }
-
-    // Bluetooth切断機能
-    async disconnectBluetooth() {
-        try {
-            if (this.characteristic && this.characteristic.service.device.gatt.connected) {
-                await this.characteristic.service.device.gatt.disconnect();
-            }
-            
-            this.characteristic = null;
-            this.isBluetoothConnected = false;
-            
-            // UIを初期状態に戻す
-            const connectDevice1Button = document.getElementById('connectDevice1Button');
-            const connectDevice2Button = document.getElementById('connectDevice2Button');
-            const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
-            const thresholdControl = document.getElementById('thresholdControl');
-            const startButton = document.getElementById('startButton');
-            
-            if (connectDevice1Button) connectDevice1Button.style.display = 'inline-block';
-            if (connectDevice2Button) connectDevice2Button.style.display = 'inline-block';
-            if (disconnectBluetoothButton) disconnectBluetoothButton.style.display = 'none';
-            if (thresholdControl) thresholdControl.style.display = 'none';
-            
-            // ゲーム開始ボタンを無効化
-            if (startButton) {
-                startButton.disabled = true;
-                startButton.style.opacity = '0.5';
-                startButton.style.cursor = 'not-allowed';
-                startButton.textContent = 'Bluetooth接続後にゲーム開始';
-            }
-            
-            // デバイス選択スイッチを有効化
-            this.updateDeviceSwitchState();
-            
-            console.log('Bluetooth切断完了');
-            
-        } catch (error) {
-            console.log('Bluetooth切断エラー: ' + error);
-        }
-    }
-
+    
     // Bluetooth接続機能
     async connectToBluetooth() {
         try {
-            const deviceInfo = this.getCurrentDeviceInfo();
-            console.log(`Bluetooth接続を試行中... (${deviceInfo.name})`);
-            
+            console.log('Bluetooth接続を試行中...');
             const device = await navigator.bluetooth.requestDevice({
-                filters: [{ name: deviceInfo.name }],
-                optionalServices: [deviceInfo.service_uuid]
+                filters: [{ name: this.device_name }],
+                optionalServices: [this.service_uuid]
             });
 
             const server = await device.gatt.connect();
-            const service = await server.getPrimaryService(deviceInfo.service_uuid);
-            this.characteristic = await service.getCharacteristic(deviceInfo.characteristic_uuid);
+            const service = await server.getPrimaryService(this.service_uuid);
+            this.characteristic = await service.getCharacteristic(this.characteristic_uuid);
 
             await this.characteristic.startNotifications();
             this.characteristic.addEventListener('characteristicvaluechanged', (event) => this.handleNotify(event));
 
             console.log('Bluetooth接続完了＆通知待機中');
             
-            // 接続状態を更新
-            this.isBluetoothConnected = true;
-            
             // 接続成功時にUI要素を更新
-            const connectDevice1Button = document.getElementById('connectDevice1Button');
-            const connectDevice2Button = document.getElementById('connectDevice2Button');
-            const disconnectBluetoothButton = document.getElementById('disconnectBluetoothButton');
-            const thresholdControl = document.getElementById('thresholdControl');
-            const startButton = document.getElementById('startButton');
-            
-            if (connectDevice1Button) connectDevice1Button.style.display = 'none';
-            if (connectDevice2Button) connectDevice2Button.style.display = 'none';
-            if (disconnectBluetoothButton) disconnectBluetoothButton.style.display = 'inline-block';
-            if (thresholdControl) thresholdControl.style.display = 'block';
-            
-            // デバイス選択スイッチを無効化
-            this.updateDeviceSwitchState();
+            document.getElementById('connectBluetoothButton').style.display = 'none';
+            document.getElementById('thresholdControl').style.display = 'block';
             
             // ゲーム開始ボタンを有効化
-            if (startButton) {
-                startButton.disabled = false;
-                startButton.style.opacity = '1';
-                startButton.style.cursor = 'pointer';
-                startButton.textContent = 'しきい値を調整してゲーム開始';
-            }
+            const startButton = document.getElementById('startButton');
+            startButton.disabled = false;
+            startButton.style.opacity = '1';
+            startButton.style.cursor = 'pointer';
+            startButton.textContent = 'しきい値を調整してゲーム開始';
             
             // 通信開始を自動実行
             await this.sendStart();
@@ -1653,9 +1483,6 @@ class SpaceInvadersGame {
         } catch (error) {
             console.log('Bluetooth接続エラー: ' + error);
             alert('Bluetooth接続に失敗しました。ESP32デバイスが近くにあることを確認してください。');
-            // 接続失敗時は接続状態をリセット
-            this.isBluetoothConnected = false;
-            this.updateDeviceSwitchState();
         }
     }
 
@@ -1967,50 +1794,5 @@ class SpaceInvadersGame {
 
 // ゲーム開始
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM読み込み完了');
-    
-    // DOM要素の存在確認
-    const requiredElements = [
-        'gameCanvas', 'startButton', 'pauseButton', 'restartButton',
-        'connectDevice1Button', 'connectDevice2Button', 'disconnectBluetoothButton',
-        'thresholdSlider', 'thresholdValue', 'score', 'lives', 'beatCount'
-    ];
-    
-    let allElementsFound = true;
-    requiredElements.forEach(id => {
-        const element = document.getElementById(id);
-        if (!element) {
-            console.error(`必須要素が見つかりません: ${id}`);
-            allElementsFound = false;
-        }
-    });
-    
-    if (!allElementsFound) {
-        console.error('一部の必須DOM要素が見つかりません。少し待ってから再試行します。');
-        // 要素が見つからない場合はさらに遅延
-        setTimeout(() => initializeGame(), 500);
-    } else {
-        // 少し遅らせてゲームを初期化（全ての要素が確実に読み込まれるように）
-        setTimeout(() => initializeGame(), 200);
-    }
-});
-
-function initializeGame() {
-    try {
-        console.log('ゲーム初期化開始...');
-        const game = new SpaceInvadersGame();
-        console.log('ゲーム初期化完了');
-        
-        // グローバルスコープに追加（デバッグ用）
-        window.game = game;
-    } catch (error) {
-        console.error('ゲーム初期化エラー:', error);
-        console.error('エラー詳細:', error.stack);
-        
-        // エラーが発生した場合は少し待ってから再試行
-        setTimeout(() => {
-            console.log('ゲーム初期化を再試行します...');
-            initializeGame();
-        }, 1000);
-    }
-} 
+    const game = new SpaceInvadersGame();
+}); 

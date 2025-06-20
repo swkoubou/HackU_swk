@@ -155,64 +155,6 @@ body {
     border: 1px solid rgba(0, 100, 255, 0.3);
 }
 
-.device-selection {
-    margin-bottom: 15px;
-    padding: 10px;
-    background: rgba(0, 150, 255, 0.05);
-    border-radius: 6px;
-    border: 1px solid rgba(0, 150, 255, 0.2);
-}
-
-.connect-buttons {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-    margin: 15px 0;
-}
-
-.connect-device-button {
-    background: linear-gradient(45deg, #00aaff, #0088cc);
-    color: #fff;
-    border: 2px solid #00ffff;
-    padding: 12px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 14px;
-    font-weight: bold;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-}
-
-.connect-device-button:hover:not(:disabled) {
-    background: linear-gradient(45deg, #0088cc, #006699);
-    transform: translateY(-2px);
-    box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
-}
-
-.connect-device-button:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.connect-device-button:disabled {
-    background: linear-gradient(45deg, #555, #333);
-    border-color: #666;
-    color: #aaa;
-    cursor: not-allowed;
-    opacity: 0.5;
-    box-shadow: none;
-}
-
-#connectDevice2Button {
-    background: linear-gradient(45deg, #ff6666, #cc4444);
-    border-color: #ff9999;
-    box-shadow: 0 0 10px rgba(255, 102, 102, 0.3);
-}
-
-#connectDevice2Button:hover:not(:disabled) {
-    background: linear-gradient(45deg, #cc4444, #993333);
-    box-shadow: 0 0 15px rgba(255, 102, 102, 0.5);
-}
-
 #thresholdControl {
     margin: 10px 0;
     padding: 15px;
@@ -297,7 +239,14 @@ button:disabled {
     box-shadow: none;
 }
 
+#connectBluetoothButton {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+}
 
+#connectBluetoothButton:hover {
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+}
 
 #startCommButton, #stopCommButton {
     background: linear-gradient(45deg, #28a745, #20c997);
