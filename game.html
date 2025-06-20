@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ドックンバトル</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-info">
+            <div class="score">スコア: <span id="score">0</span></div>
+            <div class="lives">ライフ <span id="lives"></span></div>
+        </div>
+        
+        <div class="game-main">
+            <!-- 左側: グラフキャンバス -->
+            <div class="left-panel">
+                <h3>心拍データ</h3>
+                <canvas id="heartDataGraph" width="300" height="200"></canvas>
+                <div id="currentValue">現在値: <span id="valueText">--</span></div>
+            </div>
+            
+            <!-- 中央: ゲーム画面 -->
+            <div class="center-panel">
+                <svg id="gameCanvas" width="800" height="600" viewBox="0 0 800 600">
+                    <!-- 背景 -->
+                    <rect width="800" height="600" fill="#000011"/>
+                    
+                    <!-- 星背景 -->
+                    <g id="stars"></g>
+                    
+                    <!-- ゲーム要素 -->
+                    <g id="player"></g>
+                    <g id="playerBullets"></g>
+                    <g id="enemies"></g>
+                    <g id="enemyBullets"></g>
+                    <g id="explosions"></g>
+                </svg>
+            </div>
+            
+            <!-- 右側: ドックンアニメーション -->
+            <div class="right-panel">
+                <h3>ドックン</h3>
+                <canvas id="heartCanvas" width="256" height="256"></canvas>
+                <div id="beatCounter">ドックン回数: <span id="beatCount">0</span></div>
+            </div>
+        </div>
+        
+        <div class="game-controls">
+            <div class="instructions">
+                <p>操作方法:</p>
+                <p>← → : 左右移動</p>
+                <p>心拍で弾発射</p>
+                <p>P : ポーズ（心拍数上げタイム中は使用不可）</p>
+                <p>Enter : ゲームオーバー時リスタート</p>
+                <p style="color: #ffff00; font-weight: bold;">※ゲーム開始前に10秒間の心拍数上げタイムがあります</p>
+            </div>
+            <div class="bluetooth-controls">
+                <button id="connectBluetoothButton">Bluetooth接続</button>
+                <div id="thresholdControl" style="display:none; margin: 10px 0;">
+                    <label for="thresholdSlider">心拍しきい値: </label>
+                    <input type="range" id="thresholdSlider" min="1600" max="2000" value="1800" step="1" style="width: 400px;">
+                    <span id="thresholdValue">1800</span>
+                </div>
+            </div>
+            <button id="startButton" disabled style="opacity: 0.5; cursor: not-allowed;">Bluetooth接続後にゲーム開始</button>
+            <button id="pauseButton" style="display:none;">ポーズ</button>
+        </div>
+        
+        <div id="gameOverScreen" class="game-over" style="display:none;">
+            <h2 id="gameOverTitle">ゲームオーバー</h2>
+            <button id="restartButton">もう一度プレイ</button>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>

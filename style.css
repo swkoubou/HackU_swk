@@ -8,17 +8,21 @@ body {
     font-family: 'Courier New', monospace;
     background: linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 50%, #16213e 100%);
     color: #fff;
-    overflow: hidden;
+    overflow-x: hidden; /* 横スクロールのみ防止 */
+    min-height: 100vh;
 }
 
 .game-container {
-    max-width: 1400px;
+    max-width: 1600px; /* 幅を拡張 */
     margin: 0 auto;
     padding: 20px;
     font-family: 'Arial', sans-serif;
     background: linear-gradient(135deg, #1a1a2e, #16213e);
     color: white;
     min-height: 100vh;
+    overflow: visible; /* コンテナのオーバーフローを許可 */
+    width: 100%; /* 全幅を使用 */
+    box-sizing: border-box; /* パディングを含める */
 }
 
 .game-info {
@@ -27,6 +31,8 @@ body {
     margin-bottom: 20px;
     font-size: 18px;
     font-weight: bold;
+    flex-wrap: wrap; /* 小画面で折り返し */
+    gap: 10px;
 }
 
 .game-info .lives {
@@ -50,19 +56,27 @@ body {
 
 .game-main {
     display: flex;
-    gap: 20px;
+    gap: 15px; /* ギャップを小さく */
     align-items: flex-start;
     justify-content: center;
     margin-bottom: 20px;
+    flex-wrap: nowrap; /* 最初は折り返さない */
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .left-panel {
     background: rgba(0, 100, 255, 0.1);
     border: 2px solid rgba(0, 100, 255, 0.3);
     border-radius: 10px;
-    padding: 15px;
-    width: 320px;
+    padding: 10px; /* さらにパディングを小さく */
+    width: 200px; /* さらに幅を縮小 */
+    min-width: 150px;
+    max-width: 250px;
     text-align: center;
+    flex-shrink: 1;
+    box-sizing: border-box;
 }
 
 .left-panel h3 {
@@ -75,6 +89,9 @@ body {
     border: 1px solid #00aaff;
     border-radius: 5px;
     background: rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 300px;
+    height: 200px;
 }
 
 #currentValue {
@@ -89,15 +106,22 @@ body {
 
 .center-panel {
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .right-panel {
     background: rgba(255, 100, 100, 0.1);
     border: 2px solid rgba(255, 100, 100, 0.3);
     border-radius: 10px;
-    padding: 15px;
-    width: 280px;
+    padding: 10px; /* さらにパディングを小さく */
+    width: 200px; /* さらに幅を縮小 */
+    min-width: 150px;
+    max-width: 250px;
     text-align: center;
+    flex-shrink: 1;
+    box-sizing: border-box;
 }
 
 .right-panel h3 {
@@ -110,6 +134,9 @@ body {
     border: 1px solid #ff6666;
     border-radius: 5px;
     background: rgba(0, 0, 0, 0.3);
+    width: 256px;
+    height: 256px;
+    max-width: 100%;
 }
 
 #beatCounter {
@@ -128,11 +155,19 @@ body {
     border: 2px solid #00ffff;
     border-radius: 10px;
     box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+    width: 600px; /* さらに幅を小さく */
+    height: 450px; /* 高さも比例して調整 */
+    max-width: 100%;
+    max-height: 60vh;
+    flex-shrink: 0;
 }
 
 .game-controls {
     text-align: center;
     margin-top: 20px;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .instructions {
@@ -145,6 +180,7 @@ body {
 
 .instructions p {
     margin: 5px 0;
+    line-height: 1.4;
 }
 
 .bluetooth-controls {
@@ -172,7 +208,7 @@ body {
 }
 
 #thresholdSlider {
-    width: 400px;
+    width: min(400px, 80vw); /* レスポンシブ対応 */
     height: 8px;
     margin: 0 15px;
     background: linear-gradient(to right, #00aaff, #0088cc);
@@ -392,31 +428,118 @@ button:disabled {
 }
 
 /* レスポンシブデザイン */
-@media (max-width: 1400px) {
+/* より早い段階で縦並びに切り替え - 最優先 */
+@media (max-width: 1300px) {
+    .game-main {
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 15px !important;
+    }
+    
+    .left-panel, .right-panel {
+        width: 100% !important;
+        max-width: 500px !important;
+        min-width: auto !important;
+        padding: 15px !important;
+    }
+    
+    #gameCanvas {
+        width: 100% !important;
+        max-width: 700px !important;
+        height: auto !important;
+        aspect-ratio: 4/3 !important;
+        max-height: none !important;
+    }
+}
+
+/* 大画面（1600px以上）での最適化 */
+@media (min-width: 1600px) {
+    .game-main {
+        gap: 25px;
+    }
+    
+    .left-panel, .right-panel {
+        width: 280px;
+        max-width: none;
+        padding: 15px;
+    }
+    
+    #gameCanvas {
+        width: 800px;
+        height: 600px;
+        max-width: none;
+    }
+}
+
+/* 中大画面（1301px-1599px）での調整 */
+@media (min-width: 1301px) and (max-width: 1599px) {
+    .game-container {
+        padding: 15px;
+    }
+    
+    .game-main {
+        gap: 8px;
+    }
+    
+    .left-panel, .right-panel {
+        width: 180px;
+        min-width: 140px;
+        padding: 8px;
+    }
+    
+    #gameCanvas {
+        width: 550px;
+        height: 412px;
+    }
+}
+
+/* タブレット対応（900px以下） */
+@media (max-width: 900px) {
+    .game-container {
+        padding: 15px;
+    }
+    
     .game-main {
         flex-direction: column;
         align-items: center;
+        gap: 20px;
     }
     
     .left-panel, .right-panel {
         width: 100%;
-        max-width: 400px;
-        margin-bottom: 20px;
+        max-width: 500px;
+        min-width: auto;
     }
     
     #gameCanvas {
         width: 100%;
-        max-width: 800px;
+        max-width: 600px;
         height: auto;
+        aspect-ratio: 4/3;
+    }
+    
+    .game-info {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    #heartDataGraph {
+        max-width: 100%;
+    }
+    
+    #heartCanvas {
+        width: 200px;
+        height: 200px;
+    }
+    
+    #thresholdSlider {
+        width: min(350px, 90vw);
     }
 }
 
-@media (max-width: 900px) {
-    #gameCanvas {
-        width: 100%;
-        height: auto;
-    }
-    
+/* スマートフォン対応（600px以下） */
+@media (max-width: 600px) {
     .game-container {
         padding: 10px;
     }
@@ -425,23 +548,72 @@ button:disabled {
         font-size: 16px;
     }
     
-    #thresholdSlider {
-        width: 280px;
-    }
-    
     .left-panel, .right-panel {
-        width: 100%;
-        padding: 10px;
+        padding: 12px;
     }
     
-    #heartDataGraph {
-        width: 100%;
-        max-width: 280px;
+    #gameCanvas {
+        max-width: 100%;
+        border-width: 1px;
     }
     
     #heartCanvas {
+        width: 150px;
+        height: 150px;
+    }
+    
+    #thresholdSlider {
+        width: min(280px, 85vw);
+    }
+    
+    .instructions {
+        padding: 12px;
+        font-size: 14px;
+    }
+    
+    button {
+        padding: 10px 20px;
+        font-size: 14px;
+    }
+    
+    .game-over, .level-clear {
+        padding: 30px 20px;
+        min-width: 300px;
+    }
+    
+    .game-over h2, .level-clear h2 {
+        font-size: 28px;
+    }
+}
+
+/* 超小画面対応（400px以下） */
+@media (max-width: 400px) {
+    .game-container {
+        padding: 8px;
+    }
+    
+    #gameCanvas {
         width: 100%;
-        max-width: 200px;
         height: auto;
+        min-height: 250px;
+    }
+    
+    #heartCanvas {
+        width: 120px;
+        height: 120px;
+    }
+    
+    #thresholdSlider {
+        width: min(250px, 80vw);
+        margin: 0 5px;
+    }
+    
+    .left-panel, .right-panel {
+        padding: 10px;
+    }
+    
+    .game-over, .level-clear {
+        padding: 20px 15px;
+        min-width: 280px;
     }
 } 

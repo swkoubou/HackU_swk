@@ -85,6 +85,15 @@ class SpaceInvadersGame {
         // デバッグ用
         this.showCollisionBoxes = false; // 当たり判定表示フラグ
         
+        // BGM用
+        this.bgmAudio = null;
+        this.bgmVolume = 0.005; // 控えめな音量
+        
+        // 効果音用
+        this.deadSoundAudio = null;
+        this.damageSoundAudio = null;
+        this.effectVolume = 0.01; // 効果音用の音量（BGMより少し大きめ）
+        
         // グラフ描画用
         this.graphCanvas = null;
         this.graphCtx = null;
@@ -105,6 +114,7 @@ class SpaceInvadersGame {
         this.createPlayer();
         this.setupUI();
         this.setupCanvases();
+        this.setupBGM();
     }
     
     setupCanvases() {
@@ -118,6 +128,34 @@ class SpaceInvadersGame {
         
         // ハートのSVG画像を読み込み（簡単な円形で代用）
         this.loadHeartImages();
+    }
+    
+    setupBGM() {
+        try {
+            this.bgmAudio = new Audio('music.mp3');
+            this.bgmAudio.loop = true; // ループ再生
+            this.bgmAudio.volume = this.bgmVolume; // 控えめな音量
+            this.bgmAudio.preload = 'auto'; // 事前読み込み
+            
+            console.log('BGMセットアップ完了');
+        } catch (error) {
+            console.error('BGMセットアップエラー:', error);
+        }
+        
+        // 効果音のセットアップ
+        try {
+            this.deadSoundAudio = new Audio('dead.mp3');
+            this.deadSoundAudio.volume = this.effectVolume;
+            this.deadSoundAudio.preload = 'auto';
+            
+            this.damageSoundAudio = new Audio('get-damage.mp3');
+            this.damageSoundAudio.volume = this.effectVolume;
+            this.damageSoundAudio.preload = 'auto';
+            
+            console.log('効果音セットアップ完了');
+        } catch (error) {
+            console.error('効果音セットアップエラー:', error);
+        }
     }
     
     loadHeartImages() {
@@ -153,6 +191,61 @@ class SpaceInvadersGame {
         ctx.fill();
         
         ctx.restore();
+    }
+    
+    // BGM制御関数
+    playBGM() {
+        if (this.bgmAudio) {
+            this.bgmAudio.play()
+                .then(() => {
+                    console.log('BGM再生開始');
+                })
+                .catch(error => {
+                    console.error('BGM再生エラー:', error);
+                });
+        }
+    }
+    
+    pauseBGM() {
+        if (this.bgmAudio && !this.bgmAudio.paused) {
+            this.bgmAudio.pause();
+            console.log('BGM一時停止');
+        }
+    }
+    
+    stopBGM() {
+        if (this.bgmAudio) {
+            this.bgmAudio.pause();
+            this.bgmAudio.currentTime = 0;
+            console.log('BGM停止');
+        }
+    }
+    
+    // 効果音制御関数
+    playDeadSound() {
+        if (this.deadSoundAudio) {
+            this.deadSoundAudio.currentTime = 0; // 最初から再生
+            this.deadSoundAudio.play()
+                .then(() => {
+                    console.log('敵撃破音再生');
+                })
+                .catch(error => {
+                    console.error('敵撃破音再生エラー:', error);
+                });
+        }
+    }
+    
+    playDamageSound() {
+        if (this.damageSoundAudio) {
+            this.damageSoundAudio.currentTime = 0; // 最初から再生
+            this.damageSoundAudio.play()
+                .then(() => {
+                    console.log('ダメージ音再生');
+                })
+                .catch(error => {
+                    console.error('ダメージ音再生エラー:', error);
+                });
+        }
     }
     
     createStars() {
@@ -316,7 +409,7 @@ class SpaceInvadersGame {
     createBoss() {
         // 最初のボス敵の設定
         const bossIndex = this.bosses.length;
-        const baseShootInterval = 2400;
+        const baseShootInterval = 3600;
         const shootInterval = baseShootInterval; // 最初のボスは基本間隔
         const initialDelay = 1000; // 最初のボスは1秒後に射撃開始
         
@@ -494,13 +587,22 @@ class SpaceInvadersGame {
         
         console.log('準備時間開始');
         
+        // BGM開始
+        this.playBGM();
+        
         this.gameState = 'preparation';
         this.preparationStartTime = Date.now();
         this.preparationTimer = 0;
         
         document.getElementById('startButton').style.display = 'none';
-        document.getElementById('pauseButton').style.display = 'inline-block';
-        document.getElementById('pauseButton').textContent = 'ポーズ';
+        
+        // 準備時間中はポーズボタンを無効化
+        const pauseButton = document.getElementById('pauseButton');
+        pauseButton.style.display = 'inline-block';
+        pauseButton.textContent = '心拍数上げタイム中...';
+        pauseButton.disabled = true;
+        pauseButton.style.opacity = '0.5';
+        pauseButton.style.cursor = 'not-allowed';
         
         // 準備時間中の表示を開始
         this.showPreparationScreen();
@@ -511,16 +613,21 @@ class SpaceInvadersGame {
     }
     
     togglePause() {
+        // 心拍数上げタイム中はポーズ不可
+        if (this.gameState === 'preparation') {
+            console.log('心拍数上げタイム中はポーズできません');
+            return;
+        }
+        
         if (this.gameState === 'playing') {
             this.gameState = 'paused';
+            this.pauseBGM(); // BGM一時停止
             document.getElementById('pauseButton').textContent = '再開';
         } else if (this.gameState === 'paused') {
             this.gameState = 'playing';
+            this.playBGM(); // BGM再開
             document.getElementById('pauseButton').textContent = 'ポーズ';
             this.gameLoop();
-        } else if (this.gameState === 'preparation') {
-            this.gameState = 'paused';
-            document.getElementById('pauseButton').textContent = '再開';
         }
     }
     
@@ -987,6 +1094,7 @@ class SpaceInvadersGame {
                         enemy.element.remove();
                         this.enemies.splice(j, 1);
                         this.score += 30; // 雑魚敵を倒したら30ポイント
+                        this.playDeadSound(); // 敵撃破音を再生
                         console.log(`敵を倒しました！残り敵数: ${this.enemies.length}, スコア: ${this.score}`);
                     }
                     
@@ -1010,6 +1118,7 @@ class SpaceInvadersGame {
                         this.bosses.splice(bossIndex, 1);
                         this.bossesDefeated++;
                         this.score += 100; // ボス敵を倒したら100ポイント
+                        this.playDeadSound(); // ボス撃破音を再生
                         console.log(`ボスを倒しました！討伐数: ${this.bossesDefeated}, スコア: ${this.score}`);
                         
                         // ボスを倒した後に2匹のボス敵を生成
@@ -1033,6 +1142,7 @@ class SpaceInvadersGame {
             if (this.isColliding(bullet, this.player) && !this.player.invulnerable) {
                 this.createExplosion(this.player.x, this.player.y);
                 this.playerDamageEffect();
+                this.playDamageSound(); // ダメージ音を再生
                 this.player.invulnerable = true;
                 this.player.invulnerableTime = 0;
                 this.lives--;
@@ -1052,6 +1162,7 @@ class SpaceInvadersGame {
         for (const enemy of this.enemies) {
             if (enemy.y > this.player.y - 50) {
                 this.playerDamageEffect();
+                this.playDamageSound(); // ダメージ音を再生
                 this.gameOver();
                 break;
             }
@@ -1234,36 +1345,21 @@ class SpaceInvadersGame {
         console.log('gameWin() が呼び出されました');
         this.gameState = 'gameOver';
         
-        // 段階的にゲームクリア画面を表示
+        // 通信を停止
+        if (this.characteristic) {
+            this.sendStop();
+        }
+        
+        // BGM停止
+        this.stopBGM();
+        
+        // リザルト画面にリダイレクト（ゲームクリア）
         setTimeout(() => {
-            const gameOverScreen = document.getElementById('gameOverScreen');
-            console.log('gameOverScreen要素:', gameOverScreen);
-            
-            if (gameOverScreen) {
-                // クリア時のスタイルを追加
-                gameOverScreen.classList.add('win');
-                gameOverScreen.style.display = 'none';
-                
-                // コンテンツを設定
-                const titleElement = document.getElementById('gameOverTitle');
-                
-                if (titleElement) titleElement.textContent = 'ゲームクリア！';
-                
-                // 強制的に表示
-                gameOverScreen.style.display = 'block';
-                gameOverScreen.style.visibility = 'visible';
-                gameOverScreen.style.opacity = '1';
-                
-                console.log('ゲームクリア画面を表示しました');
-            } else {
-                console.error('gameOverScreen要素が見つかりません');
-                // 代替手段として直接HTMLに挿入
-                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:green;color:white;padding:50px;border:3px solid lime;z-index:10000;"><h2>ゲームクリア！</h2><button onclick="location.reload()">リスタート</button></div>';
-            }
-            
-            const pauseButton = document.getElementById('pauseButton');
-            if (pauseButton) pauseButton.style.display = 'none';
-        }, 100);
+            const finalScore = this.score;
+            const result = 'win'; // ゲームクリアの場合
+            console.log(`ゲームクリア！スコア: ${finalScore} でリザルト画面へリダイレクトします`);
+            window.location.href = `/result.html?score=${finalScore}&beatCount=${this.beatCount}`;
+        }, 1000);
         
         console.log('ゲームクリア！');
     }
@@ -1272,41 +1368,29 @@ class SpaceInvadersGame {
         console.log('gameOver() が呼び出されました');
         this.gameState = 'gameOver';
         
-        // 段階的にゲームオーバー画面を表示
+        // 通信を停止
+        if (this.characteristic) {
+            this.sendStop();
+        }
+        
+        // BGM停止
+        this.stopBGM();
+        
+        // リザルト画面にリダイレクト（ゲームオーバー）
         setTimeout(() => {
-            const gameOverScreen = document.getElementById('gameOverScreen');
-            console.log('gameOverScreen要素:', gameOverScreen);
-            
-            if (gameOverScreen) {
-                // 既存のスタイルをクリア
-                gameOverScreen.classList.remove('win');
-                gameOverScreen.style.display = 'none';
-                
-                // コンテンツを設定
-                const titleElement = document.getElementById('gameOverTitle');
-                
-                if (titleElement) titleElement.textContent = 'ゲームオーバー';
-                
-                // 強制的に表示
-                gameOverScreen.style.display = 'block';
-                gameOverScreen.style.visibility = 'visible';
-                gameOverScreen.style.opacity = '1';
-                
-                console.log('ゲームオーバー画面を表示しました');
-            } else {
-                console.error('gameOverScreen要素が見つかりません');
-                // 代替手段として直接HTMLに挿入
-                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:black;color:white;padding:50px;border:3px solid red;z-index:10000;"><h2>ゲームオーバー</h2><button onclick="location.reload()">リスタート</button></div>';
-            }
-            
-            const pauseButton = document.getElementById('pauseButton');
-            if (pauseButton) pauseButton.style.display = 'none';
-        }, 100);
+            const finalScore = this.score;
+            const result = 'lose'; // ゲームオーバーの場合
+            console.log(`ゲームオーバー！スコア: ${finalScore} でリザルト画面へリダイレクトします`);
+            window.location.href = `/result.html?score=${finalScore}&beatCount=${this.beatCount}`;
+        }, 1000);
         
         console.log('ゲームオーバー');
     }
     
     restartGame() {
+        // BGM停止
+        this.stopBGM();
+        
         // ゲーム状態の完全リセット
         this.score = 0;
         this.lives = 5;
@@ -1753,6 +1837,13 @@ class SpaceInvadersGame {
         if (preparationScreen) {
             preparationScreen.remove();
         }
+        
+        // ポーズボタンを有効化
+        const pauseButton = document.getElementById('pauseButton');
+        pauseButton.textContent = 'ポーズ';
+        pauseButton.disabled = false;
+        pauseButton.style.opacity = '1';
+        pauseButton.style.cursor = 'pointer';
         
         // ゲーム開始
         this.gameState = 'playing';
