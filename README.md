@@ -3,6 +3,9 @@ Hack U 2025Tokyo チーム swk
 これは心拍数をもとに戦う新感覚バトルゲームです
 まずはデモをご覧下さい
 
+[![動画を見る](https://img.shields.io/badge/🎥-動画を見る-blue)](https://drive.google.com/file/d/11CYUekB-7ZitqFYvdT-IRSokUG07rrGf/view?usp=sharing)
+
+
 ESP32とBLEでchromeと接続してリアルタイムでデータをJSで受け取ります
 ランキングにはfirebaseを利用しています
 
