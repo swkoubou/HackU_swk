@@ -5,6 +5,7 @@ Hack U 2025Tokyo チーム swk
 
 [![動画を見る](https://img.shields.io/badge/🎥-動画を見る-blue)](https://drive.google.com/file/d/11CYUekB-7ZitqFYvdT-IRSokUG07rrGf/view?usp=sharing)
 
+[![ランキングを見る](https://img.shields.io/badge/🏆-ランキングを見る-blue)](https://swkoubou.github.io/HackU_swk/ranking.html)
 
 ESP32とBLEでchromeと接続してリアルタイムでデータをJSで受け取ります
 ランキングにはfirebaseを利用しています
