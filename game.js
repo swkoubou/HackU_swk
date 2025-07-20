@@ -87,12 +87,12 @@ class SpaceInvadersGame {
         
         // BGM用
         this.bgmAudio = null;
-        this.bgmVolume = 0.005; // 控えめな音量
+        this.bgmVolume = 0.15; // 音量を10倍に増加
         
         // 効果音用
         this.deadSoundAudio = null;
         this.damageSoundAudio = null;
-        this.effectVolume = 0.01; // 効果音用の音量（BGMより少し大きめ）
+        this.effectVolume = 0.3; // 効果音用の音量を10倍に増加
         
         // グラフ描画用
         this.graphCanvas = null;
